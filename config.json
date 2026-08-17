@@ -1,5 +1,5 @@
 {
-  "googleAppsScriptURL": "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/usercontent/v1/send",
+  "googleAppsScriptURL": "https://script.google.com/macros/s/AKfycbx-tJF4tAJrp148r1lgC5gwecyC5N12sQqMjlxPrPbu1jspexBnDcS6fd4sy19fgFClsA/usercontent/v1/send",
   "gpsRadius": 150,
   "adminPassword": "admin123",
   "meetingDefaults": {
