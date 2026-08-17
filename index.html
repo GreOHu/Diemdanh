@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Hệ Thống Điểm Danh QR</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 40px;
+            display: none;
+        }
+
+        .content.active {
+            display: block;
+        }
+
+        .login-screen {
+            text-align: center;
+        }
+
+        .login-screen h2 {
+            margin-bottom: 30px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .form-row.full {
+            grid-template-columns: 1fr;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 10px 20px rgba(108, 117, 125, 0.3);
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+            border-left: 4px solid #28a745;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .qr-section {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .qr-section h3 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        #qrcode {
+            display: inline-block;
+            padding: 20px;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 6px;
+        }
+
+        .qr-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .qr-actions button {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .guide-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .guide-section h4 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .guide-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+        }
+
+        .guide-item strong {
+            color: #667eea;
+        }
+
+        .copy-button {
+            background: #28a745;
+            font-size: 12px;
+            padding: 6px 12px;
+            margin-top: 10px;
+            width: auto;
+        }
+
+        .copy-button:hover {
+            box-shadow: 0 10px 20px rgba(40, 167, 69, 0.3);
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            color: #0c5aa0;
+            font-size: 13px;
+        }
+
+        .admin-button {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 24px;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        .admin-button.show {
+            display: flex;
+        }
+
+        .admin-button:hover {
+            transform: scale(1.1);
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+            border-left: 4px solid #f5c6cb;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        @media (max-width: 600px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .admin-button {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+                bottom: 20px;
+                right: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Hệ Thống Điểm Danh QR</h1>
+            <p>Đảng ủy phường Trị An</p>
+        </div>
+
+        <!-- Login Screen -->
+        <div class="content active" id="loginScreen">
+            <div class="login-screen">
+                <h2>Đăng Nhập Admin</h2>
+                <div class="form-group">
+                    <label for="adminPassword">Mật Khẩu Admin:</label>
+                    <input type="password" id="adminPassword" placeholder="Nhập mật khẩu">
+                </div>
+                <button onclick="checkPassword()">🔓 Đăng Nhập</button>
+                <div class="info-box" style="margin-top: 20px;">
+                    <strong>Mật khẩu mặc định:</strong> admin123
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Panel -->
+        <div class="content" id="adminPanel">
+            <div>
+                <h2>⚙️ Cấu Hình Cuộc Họp</h2>
+                
+                <div class="success-message" id="successMsg"></div>
+                <div class="error-message" id="errorMsg"></div>
+
+                <div class="form-group">
+                    <label for="unitName">🏢 Tên Đơn Vị:</label>
+                    <input type="text" id="unitName" placeholder="VD: Đảng ủy phường Trị An">
+                </div>
+
+                <div class="form-group">
+                    <label for="meetingTitle">📋 Chủ Đề Cuộc Họp:</label>
+                    <input type="text" id="meetingTitle" placeholder="VD: Cuộc họp thường kỳ tháng 8">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="meetingDate">📅 Ngày:</label>
+                        <input type="date" id="meetingDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="meetingTime">⏰ Giờ:</label>
+                        <input type="time" id="meetingTime">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="location">📍 Địa Điểm:</label>
+                    <input type="text" id="location" placeholder="VD: Hội trường phường Trị An">
+                </div>
+
+                <div class="form-group">
+                    <label for="coordinates">🗺️ Tọa Độ Hội Trường (Latitude, Longitude):</label>
+                    <input type="text" id="coordinates" placeholder="VD: 10.7769, 106.7622">
+                    <div class="info-box" style="margin-top: 8px; margin-bottom: 0;">
+                        📌 Lấy từ Google Maps: Nhấp chuột phải vị trí → Copy tọa độ
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="topic">📝 Nội Dung Hội Nghị:</label>
+                    <textarea id="topic" placeholder="Mô tả nội dung buổi họp..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="wifiSSID">📶 WiFi SSID (Tùy Chọn):</label>
+                    <input type="text" id="wifiSSID" placeholder="VD: TRIANAN_CONFERENCE">
+                </div>
+
+                <div class="form-group">
+                    <label for="wifiPassword">🔑 WiFi Password (Tùy Chọn):</label>
+                    <input type="text" id="wifiPassword" placeholder="VD: 123456789">
+                </div>
+
+                <button onclick="saveConfig()">💾 Lưu Cấu Hình & Tạo QR</button>
+                <button class="btn-secondary" onclick="logout()">🚪 Đăng Xuất</button>
+            </div>
+
+            <!-- QR Code Section -->
+            <div id="qrSection" style="display: none;">
+                <div class="qr-section">
+                    <h3>✅ QR Code Cuộc Họp</h3>
+                    <div id="qrcode"></div>
+                    
+                    <div class="qr-actions">
+                        <button onclick="downloadQR()">⬇️ Tải QR (PNG)</button>
+                        <button class="btn-secondary" onclick="copyMeetingID()">📋 Copy Meeting ID</button>
+                    </div>
+
+                    <div class="guide-section">
+                        <h4>📝 Hướng Dẫn Cho Cán Bộ (Copy vào PowerPoint):</h4>
+                        <div id="guideContent"></div>
+                        <button class="copy-button" onclick="copyGuide()">📋 Copy Tất Cả Hướng Dẫn</button>
+                    </div>
+
+                    <div style="margin-top: 20px;">
+                        <h4 style="color: #333; margin-bottom: 10px;">📊 Thông Tin Cuộc Họp:</h4>
+                        <div class="info-box">
+                            <div><strong>Meeting ID:</strong> <span id="displayMeetingID"></span></div>
+                            <div><strong>Đơn vị:</strong> <span id="displayUnit"></span></div>
+                            <div><strong>Thời gian:</strong> <span id="displayTime"></span></div>
+                            <div><strong>Địa điểm:</strong> <span id="displayLocation"></span></div>
+                            <div><strong>Phạm vi GPS:</strong> 150m từ tọa độ hội trường</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="admin-button" id="adminBtn" onclick="goToAdmin()">⚙️</button>
+
+    <script>
+        const ADMIN_PASSWORD = 'admin123';
+        let currentConfig = null;
+
+        function checkPassword() {
+            const password = document.getElementById('adminPassword').value;
+            if (password === ADMIN_PASSWORD) {
+                document.getElementById('loginScreen').classList.remove('active');
+                document.getElementById('adminPanel').classList.add('active');
+                document.getElementById('adminBtn').classList.add('show');
+                loadConfig();
+            } else {
+                alert('❌ Mật khẩu sai!');
+                document.getElementById('adminPassword').value = '';
+            }
+        }
+
+        function saveConfig() {
+            const unitName = document.getElementById('unitName').value.trim();
+            const meetingTitle = document.getElementById('meetingTitle').value.trim();
+            const meetingDate = document.getElementById('meetingDate').value;
+            const meetingTime = document.getElementById('meetingTime').value;
+            const location = document.getElementById('location').value.trim();
+            const coordinates = document.getElementById('coordinates').value.trim();
+            const topic = document.getElementById('topic').value.trim();
+            const wifiSSID = document.getElementById('wifiSSID').value.trim();
+            const wifiPassword = document.getElementById('wifiPassword').value.trim();
+
+            // Validation
+            if (!unitName || !meetingTitle || !meetingDate || !meetingTime || !location || !coordinates) {
+                showError('⚠️ Vui lòng điền đầy đủ thông tin bắt buộc!');
+                return;
+            }
+
+            // Validate coordinates
+            const coordPattern = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/;
+            if (!coordPattern.test(coordinates)) {
+                showError('❌ Format tọa độ không hợp lệ! Sử dụng: 10.7769, 106.7622');
+                return;
+            }
+
+            const config = {
+                unitName,
+                meetingTitle,
+                meetingDate,
+                meetingTime,
+                location,
+                coordinates,
+                topic,
+                wifiSSID,
+                wifiPassword,
+                meetingID: generateMeetingID(),
+                createdAt: new Date().toISOString()
+            };
+
+            localStorage.setItem('meetingConfig', JSON.stringify(config));
+            currentConfig = config;
+
+            generateQR(config.meetingID);
+            displayGuide(config);
+            displayMeetingInfo(config);
+
+            showSuccess('✅ Cấu hình lưu thành công!');
+        }
+
+        function generateMeetingID() {
+            const date = new Date();
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hour = String(date.getHours()).padStart(2, '0');
+            const min = String(date.getMinutes()).padStart(2, '0');
+            const sec = String(date.getSeconds()).padStart(2, '0');
+            const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            return `HOP-${year}${month}${day}-${hour}${min}${sec}-${random}`;
+        }
+
+        function generateQR(meetingID) {
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.innerHTML = '';
+            
+            // QR code chứa URL đầy đủ tới check-in form
+            const checkInUrl = `https://greohu.github.io/Diemdanh/checkin.html?meeting=${meetingID}`;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(checkInUrl)}`;
+            
+            const img = document.createElement('img');
+            img.src = qrUrl;
+            img.alt = 'QR Code';
+            img.style.border = '2px solid #667eea';
+            img.style.borderRadius = '6px';
+            img.style.padding = '20px';
+            img.style.background = 'white';
+            
+            qrContainer.appendChild(img);
+            document.getElementById('qrSection').style.display = 'block';
+        }
+
+        function displayGuide(config) {
+            const wifiInfo = config.wifiSSID ? 
+                `WiFi: <strong>${config.wifiSSID}</strong><br>Mật khẩu: <strong>${config.wifiPassword || 'N/A'}</strong>` : 
+                'Không có WiFi';
+
+            const guide = `
+<div class="guide-item">
+    <strong>Bước 1: Kết Nối Internet</strong><br>
+    ${wifiInfo}
+</div>
+<div class="guide-item">
+    <strong>Bước 2: Mở Ứng Dụng</strong><br>
+    Mở ứng dụng Camera hoặc Zalo để quét mã QR
+</div>
+<div class="guide-item">
+    <strong>Bước 3: Quét Mã QR</strong><br>
+    Hướng camera về phía mã QR và quét
+</div>
+<div class="guide-item">
+    <strong>Bước 4: Điền Thông Tin</strong><br>
+    Nhập: Họ tên, Chức vụ, Đơn vị rồi bấm Gửi
+</div>
+            `;
+
+            document.getElementById('guideContent').innerHTML = guide;
+        }
+
+        function displayMeetingInfo(config) {
+            const date = new Date(config.meetingDate).toLocaleDateString('vi-VN');
+            document.getElementById('displayMeetingID').textContent = config.meetingID;
+            document.getElementById('displayUnit').textContent = config.unitName;
+            document.getElementById('displayTime').textContent = `${date} lúc ${config.meetingTime}`;
+            document.getElementById('displayLocation').textContent = config.location;
+        }
+
+        function downloadQR() {
+            if (!currentConfig) {
+                showError('❌ Vui lòng tạo QR trước!');
+                return;
+            }
+
+            const canvas = document.querySelector('#qrcode canvas');
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = `QR_${currentConfig.meetingID}.png`;
+            link.click();
+
+            showSuccess('✅ QR code đã được tải!');
+        }
+
+        function copyMeetingID() {
+            if (!currentConfig) return;
+            navigator.clipboard.writeText(currentConfig.meetingID);
+            showSuccess('📋 Meeting ID đã copy!');
+        }
+
+        function copyGuide() {
+            const guide = document.getElementById('guideContent').innerText;
+            navigator.clipboard.writeText(guide);
+            showSuccess('📋 Hướng dẫn đã copy!');
+        }
+
+        function loadConfig() {
+            const saved = localStorage.getItem('meetingConfig');
+            if (saved) {
+                const config = JSON.parse(saved);
+                currentConfig = config;
+                
+                document.getElementById('unitName').value = config.unitName;
+                document.getElementById('meetingTitle').value = config.meetingTitle;
+                document.getElementById('meetingDate').value = config.meetingDate;
+                document.getElementById('meetingTime').value = config.meetingTime;
+                document.getElementById('location').value = config.location;
+                document.getElementById('coordinates').value = config.coordinates;
+                document.getElementById('topic').value = config.topic;
+                document.getElementById('wifiSSID').value = config.wifiSSID;
+                document.getElementById('wifiPassword').value = config.wifiPassword;
+
+                generateQR(config.meetingID);
+                displayGuide(config);
+                displayMeetingInfo(config);
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('meetingConfig');
+            document.getElementById('adminPanel').classList.remove('active');
+            document.getElementById('loginScreen').classList.add('active');
+            document.getElementById('adminBtn').classList.remove('show');
+            document.getElementById('adminPassword').value = '';
+            currentConfig = null;
+        }
+
+        function goToAdmin() {
+            const password = prompt('Nhập mật khẩu admin:');
+            if (password === ADMIN_PASSWORD) {
+                document.getElementById('loginScreen').classList.remove('active');
+                document.getElementById('adminPanel').classList.add('active');
+                loadConfig();
+            } else {
+                alert('❌ Mật khẩu sai!');
+            }
+        }
+
+        function showSuccess(msg) {
+            const el = document.getElementById('successMsg');
+            el.textContent = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3000);
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3000);
+        }
+
+        // Set today's date as default
+        document.getElementById('meetingDate').valueAsDate = new Date();
+
+        // Auto-load config on page load
+        window.addEventListener('load', () => {
+            const saved = localStorage.getItem('meetingConfig');
+            if (saved && !document.getElementById('loginScreen').classList.contains('active')) {
+                loadConfig();
+            }
+        });
+    </script>
+</body>
+</html>
