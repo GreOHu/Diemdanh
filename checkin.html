@@ -322,19 +322,21 @@
 
         // Get meeting config from URL or localStorage
         function loadMeetingConfig() {
-            const params = new URLSearchParams(window.location.search);
-            const meetingID = params.get('meeting');
-            
-            if (meetingID) {
-                localStorage.setItem('currentMeetingID', meetingID);
-            }
-            
-            const saved = localStorage.getItem('meetingConfig');
-            if (saved) {
-                currentMeetingConfig = JSON.parse(saved);
-                document.getElementById('headerSubtitle').textContent = currentMeetingConfig.unitName;
-            }
-        }
+    const params = new URLSearchParams(window.location.search);
+    const meetingIDFromURL = params.get('meeting');
+    
+    const saved = localStorage.getItem('meetingConfig');
+    if (saved) {
+        currentMeetingConfig = JSON.parse(saved);
+        document.getElementById('headerSubtitle').textContent = currentMeetingConfig.unitName;
+    }
+    
+    // Nếu có Meeting ID từ URL, auto-process ngay
+    if (meetingIDFromURL) {
+        document.getElementById('qrInput').value = meetingIDFromURL;
+        processQR(); // Auto-trigger processQR
+    }
+}
 
         function processQR() {
             const qrInput = document.getElementById('qrInput').value.trim();
