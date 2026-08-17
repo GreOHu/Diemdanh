@@ -1,0 +1,9 @@
+{
+  "googleAppsScriptURL": "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/usercontent/v1/send",
+  "gpsRadius": 150,
+  "adminPassword": "admin123",
+  "meetingDefaults": {
+    "unitName": "Đảng ủy phường Trị An",
+    "coordinates": "10.7769, 106.7622"
+  }
+}
