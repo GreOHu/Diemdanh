@@ -501,9 +501,8 @@
     const qrContainer = document.getElementById('qrcode');
     qrContainer.innerHTML = '';
     
-    // QR code chứa URL đầy đủ tới check-in form
-    const checkInUrl = `https://greohu.github.io/Diemdanh/checkin.html?meeting=${encodeURIComponent(meetingID)}`;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(checkInUrl)}`;
+    // QR code chỉ chứa Meeting ID (đơn giản hơn)
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(meetingID)}`;
     
     const img = document.createElement('img');
     img.src = qrUrl;
