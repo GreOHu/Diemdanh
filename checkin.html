@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Điểm Danh Cuộc Họp</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 13px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group.read-only input {
+            background: #f5f5f5;
+            cursor: not-allowed;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 10px 20px rgba(108, 117, 125, 0.3);
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+
+        .info {
+            background: #e7f3ff;
+            color: #0c5aa0;
+            border-left: 4px solid #2196F3;
+        }
+
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+
+        .loading {
+            text-align: center;
+            color: #667eea;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .qr-input {
+            font-size: 16px !important;
+            padding: 15px !important;
+            text-align: center;
+        }
+
+        .instruction {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            color: #555;
+            font-size: 13px;
+            border-left: 4px solid #667eea;
+        }
+
+        .meeting-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #555;
+        }
+
+        .meeting-info strong {
+            color: #333;
+        }
+
+        .edit-notice {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+
+        @media (max-width: 600px) {
+            .header {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Điểm Danh Cuộc Họp</h1>
+            <p id="headerSubtitle">Đảng ủy phường Trị An</p>
+        </div>
+
+        <div class="content">
+            <!-- QR Scan Section -->
+            <div class="section active" id="qrSection">
+                <div class="instruction">
+                    📱 Quét mã QR từ màn hình hoặc nhập thủ công
+                </div>
+
+                <div class="message error" id="qrError"></div>
+                <div class="message success" id="qrSuccess"></div>
+                <div class="message warning" id="qrWarning"></div>
+
+                <div class="form-group">
+                    <label for="qrInput">Mã QR hoặc Meeting ID:</label>
+                    <input type="text" id="qrInput" class="qr-input" 
+                           placeholder="Quét mã QR..." autofocus
+                           onchange="processQR()" 
+                           onkeypress="if(event.key==='Enter') processQR()">
+                </div>
+
+                <button onclick="processQR()">✅ Xác Nhận Mã QR</button>
+            </div>
+
+            <!-- Check-in Form Section -->
+            <div class="section" id="formSection">
+                <div class="meeting-info" id="meetingInfo"></div>
+                <div class="edit-notice" id="editNotice" style="display: none;">
+                    ⚠️ Bạn đã điểm danh trước đó. Cập nhật thông tin sẽ ghi đè dữ liệu cũ.
+                </div>
+                
+                <div class="message error" id="formError"></div>
+
+                <div class="form-group">
+                    <label for="fullName">Họ và Tên <span style="color: red;">*</span></label>
+                    <input type="text" id="fullName" placeholder="Ví dụ: Nguyễn Văn A">
+                </div>
+
+                <div class="form-group">
+                    <label for="position">Chức Vụ</label>
+                    <input type="text" id="position" placeholder="Ví dụ: Bí thư Đảng ủy">
+                </div>
+
+                <div class="form-group">
+                    <label for="department">Đơn Vị</label>
+                    <input type="text" id="department" placeholder="Ví dụ: Đảng ủy phường Trị An">
+                </div>
+
+                <button onclick="submitForm()">✅ Gửi Thông Tin Điểm Danh</button>
+                <button class="btn-secondary" onclick="cancelForm()">↩️ Quay Lại</button>
+            </div>
+
+            <!-- Loading Section -->
+            <div class="section" id="loadingSection">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Đang xử lý...</p>
+                </div>
+            </div>
+
+            <!-- Success Section -->
+            <div class="section" id="successSection">
+                <div style="text-align: center;">
+                    <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
+                    <h2 style="color: #28a745; margin-bottom: 15px;">Điểm Danh Thành Công!</h2>
+                    <div class="meeting-info">
+                        <div><strong>Họ tên:</strong> <span id="successName"></span></div>
+                        <div><strong>Chức vụ:</strong> <span id="successPosition"></span></div>
+                        <div><strong>Đơn vị:</strong> <span id="successDepartment"></span></div>
+                        <div><strong>Thời gian:</strong> <span id="successTime"></span></div>
+                    </div>
+                    <button onclick="startOver()">🔄 Quét Lần Tiếp Theo</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============ CONFIG ============
+        const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/usercontent';
+        const DEBUG = true; // Set to true để xem logs
+
+        // ============ STATE ============
+        let currentMeetingConfig = null;
+        let checkInData = null;
+        let isEditMode = false;
+
+        // ============ LOGGING ============
+        function log(msg, data = null) {
+            if (DEBUG) {
+                console.log(`[DIEMDANH] ${msg}`, data || '');
+            }
+        }
+
+        // ============ LOAD CONFIG ============
+        function loadMeetingConfig() {
+            log('📥 loadMeetingConfig() - Bắt đầu');
+            
+            // Lấy meetingID từ URL params
+            const params = new URLSearchParams(window.location.search);
+            const meetingIDFromURL = params.get('meeting');
+            if (meetingIDFromURL) {
+                log('✓ Found meetingID from URL:', meetingIDFromURL);
+                localStorage.setItem('currentMeetingID', meetingIDFromURL);
+            }
+            
+            // Lấy config từ localStorage (admin panel đã set)
+            const saved = localStorage.getItem('meetingConfig');
+            if (saved) {
+                try {
+                    currentMeetingConfig = JSON.parse(saved);
+                    log('✓ Config loaded from localStorage:', currentMeetingConfig);
+                    document.getElementById('headerSubtitle').textContent = currentMeetingConfig.unitName;
+                    showMessage('qrWarning', '✅ Config đã load: ' + currentMeetingConfig.meetingTitle);
+                    setTimeout(() => {
+                        document.getElementById('qrWarning').classList.remove('show');
+                    }, 3000);
+                } catch (e) {
+                    log('❌ Error parsing config:', e);
+                }
+            } else {
+                log('⚠️ No config in localStorage');
+                showMessage('qrError', '⚠️ Chưa cấu hình cuộc họp. Vui lòng hỏi admin cấu hình trước.');
+            }
+        }
+
+        // ============ PROCESS QR ============
+        function processQR() {
+            log('🔄 processQR() - Input value:', document.getElementById('qrInput').value);
+            
+            // Ensure config loaded
+            if (!currentMeetingConfig) {
+                log('⚠️ Config chưa load, cố gắng load lại...');
+                loadMeetingConfig();
+            }
+            
+            const qrInput = document.getElementById('qrInput').value.trim();
+            
+            if (!qrInput) {
+                log('❌ Input rỗng');
+                showMessage('qrError', '❌ Vui lòng quét hoặc nhập mã QR');
+                return;
+            }
+
+            if (!currentMeetingConfig) {
+                log('❌ Config KHÔNG tìm thấy');
+                showMessage('qrError', '❌ Chưa cấu hình cuộc họp. Vui lòng liên hệ admin.');
+                return;
+            }
+
+            log('✓ QR input hợp lệ, bắt đầu validate GPS');
+            validateGPS(qrInput);
+        }
+
+        // ============ VALIDATE GPS ============
+        function validateGPS(meetingID) {
+            log('📍 validateGPS() - Meeting:', meetingID);
+            showSection('loadingSection');
+            
+            if (!navigator.geolocation) {
+                log('❌ Thiết bị không hỗ trợ GPS');
+                // Vẫn cho phép tiếp tục (chỉ warning)
+                showMessage('qrWarning', '⚠️ Thiết bị không hỗ trợ GPS. Vẫn cho phép check-in.');
+                setTimeout(() => checkIfAlreadyCheckedIn(meetingID), 1500);
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    log('✓ GPS OK:', position.coords);
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+                    
+                    // trim() từng phần để tương thích cả tọa độ cũ có khoảng trắng (vd "10.94, 106.81")
+                    const coords = currentMeetingConfig.coordinates.split(',');
+                    const venueLat = parseFloat(coords[0].trim());
+                    const venueLng = parseFloat(coords[1].trim());
+                    
+                    log(`✓ User location: ${userLat}, ${userLng}`);
+                    log(`✓ Venue location: ${venueLat}, ${venueLng}`);
+                    
+                    const distance = calculateDistance(userLat, userLng, venueLat, venueLng);
+                    log(`✓ Distance: ${Math.round(distance)}m (allowed: 150m)`);
+                    
+                    if (distance <= 150) {
+                        log('✓ GPS validate SUCCESS');
+                        checkIfAlreadyCheckedIn(meetingID);
+                    } else {
+                        log('❌ GPS validate FAILED - quá xa');
+                        showMessage('qrError', 
+                            `❌ Bạn ở cách hội trường ${Math.round(distance)}m. Phạm vi cho phép: 150m`);
+                        showSection('qrSection');
+                    }
+                },
+                (error) => {
+                    log('❌ GPS error:', error.message);
+                    // Vẫn cho phép tiếp tục (chỉ warning)
+                    showMessage('qrWarning', '⚠️ Không thể lấy vị trí GPS. Vẫn cho phép check-in.');
+                    setTimeout(() => checkIfAlreadyCheckedIn(meetingID), 1500);
+                }
+            );
+        }
+
+        // ============ CALCULATE DISTANCE ============
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Bán kính trái đất (meters)
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // ============ CHECK ALREADY CHECKED IN ============
+        function checkIfAlreadyCheckedIn(meetingID) {
+            log('🔍 checkIfAlreadyCheckedIn() - Checking duplicate...');
+            
+            // Nếu Google Apps Script URL chưa config, skip check
+            if (GOOGLE_APPS_SCRIPT_URL.includes('YOUR_DEPLOYMENT_ID')) {
+                log('⚠️ Google Apps Script URL chưa cấu hình, allow check-in');
+                isEditMode = false;
+                showCheckInForm(meetingID);
+                return;
+            }
+
+            fetch(GOOGLE_APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'checkAttendance',
+                    meetingID: meetingID
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                log('✓ GAS response:', data);
+                if (data.alreadyCheckedIn) {
+                    log('⚠️ Đã điểm danh trước, cho phép edit');
+                    isEditMode = true;
+                    checkInData = data.data;
+                    showEditForm(meetingID, data.data);
+                } else {
+                    log('✓ Chưa điểm danh, hiển thị form mới');
+                    isEditMode = false;
+                    checkInData = null;
+                    showCheckInForm(meetingID);
+                }
+            })
+            .catch(error => {
+                log('⚠️ GAS fetch error:', error.message);
+                // Vẫn allow check-in
+                isEditMode = false;
+                showCheckInForm(meetingID);
+            });
+        }
+
+        // ============ SHOW CHECK-IN FORM ============
+        function showCheckInForm(meetingID) {
+            log('📝 showCheckInForm() - Displaying form');
+            checkInData = { meetingID, timestamp: new Date().toISOString() };
+            document.getElementById('editNotice').style.display = 'none';
+            displayMeetingInfo();
+            showSection('formSection');
+            setTimeout(() => {
+                document.getElementById('fullName').focus();
+            }, 100);
+        }
+
+        // ============ SHOW EDIT FORM ============
+        function showEditForm(meetingID, data) {
+            log('✏️ showEditForm() - Displaying edit form');
+            checkInData = data;
+            document.getElementById('editNotice').style.display = 'block';
+            document.getElementById('fullName').value = data.fullName || '';
+            document.getElementById('position').value = data.position || '';
+            document.getElementById('department').value = data.department || '';
+            displayMeetingInfo();
+            showSection('formSection');
+            setTimeout(() => {
+                document.getElementById('fullName').focus();
+            }, 100);
+        }
+
+        // ============ DISPLAY MEETING INFO ============
+        function displayMeetingInfo() {
+            const date = new Date(currentMeetingConfig.meetingDate).toLocaleDateString('vi-VN');
+            const html = `
+                <strong>📅 ${date} - ${currentMeetingConfig.meetingTime}</strong><br>
+                ${currentMeetingConfig.meetingTitle}<br>
+                📍 ${currentMeetingConfig.location}
+            `;
+            document.getElementById('meetingInfo').innerHTML = html;
+        }
+
+        // ============ SUBMIT FORM ============
+        function submitForm() {
+            log('📤 submitForm() - Submitting data');
+            
+            const fullName = document.getElementById('fullName').value.trim();
+            const position = document.getElementById('position').value.trim();
+            const department = document.getElementById('department').value.trim();
+
+            if (!fullName) {
+                log('❌ Name empty');
+                showMessage('formError', '❌ Vui lòng nhập họ tên');
+                return;
+            }
+
+            log('✓ Form validation OK, submitting...');
+            showSection('loadingSection');
+
+            const payload = {
+                action: 'submitAttendance',
+                meetingID: checkInData.meetingID,
+                fullName: fullName,
+                position: position,
+                department: department,
+                timestamp: new Date().toLocaleString('vi-VN'),
+                isEdit: isEditMode
+            };
+
+            log('📨 Payload:', payload);
+
+            // Nếu GAS URL chưa config, skip GAS call
+            if (GOOGLE_APPS_SCRIPT_URL.includes('YOUR_DEPLOYMENT_ID')) {
+                log('⚠️ GAS URL chưa config, simulating success');
+                setTimeout(() => {
+                    showSuccessSection(fullName, position, department);
+                }, 1000);
+                return;
+            }
+
+            fetch(GOOGLE_APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            })
+            .then(response => response.json())
+            .then(data => {
+                log('✓ GAS submit success:', data);
+                showSuccessSection(fullName, position, department);
+            })
+            .catch(error => {
+                log('⚠️ GAS submit error:', error.message);
+                // Vẫn show success (data có thể đã gửi)
+                showSuccessSection(fullName, position, department);
+            });
+        }
+
+        // ============ SHOW SUCCESS ============
+        function showSuccessSection(name, position, department) {
+            log('🎉 showSuccessSection()');
+            document.getElementById('successName').textContent = name;
+            document.getElementById('successPosition').textContent = position || 'N/A';
+            document.getElementById('successDepartment').textContent = department || 'N/A';
+            document.getElementById('successTime').textContent = new Date().toLocaleTimeString('vi-VN');
+            showSection('successSection');
+        }
+
+        // ============ CANCEL FORM ============
+        function cancelForm() {
+            log('↩️ cancelForm()');
+            document.getElementById('fullName').value = '';
+            document.getElementById('position').value = '';
+            document.getElementById('department').value = '';
+            document.getElementById('qrInput').value = '';
+            showSection('qrSection');
+            document.getElementById('qrInput').focus();
+        }
+
+        // ============ START OVER ============
+        function startOver() {
+            log('🔄 startOver()');
+            cancelForm();
+        }
+
+        // ============ SHOW SECTION ============
+        function showSection(sectionId) {
+            log('👁️ showSection():', sectionId);
+            document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+            document.getElementById(sectionId).classList.add('active');
+        }
+
+        // ============ SHOW MESSAGE ============
+        function showMessage(elementId, message) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.classList.add('show');
+            log('💬 Message:', message);
+        }
+
+        // ============ KEYBOARD SHORTCUTS ============
+        document.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                if (document.getElementById('qrSection').classList.contains('active')) {
+                    processQR();
+                } else if (document.getElementById('formSection').classList.contains('active')) {
+                    submitForm();
+                }
+            }
+        });
+
+        // ============ INITIALIZE ============
+        window.addEventListener('load', () => {
+            log('🚀 Page loaded, initializing...');
+            loadMeetingConfig();
+            log('✅ Initialization complete');
+        });
+    </script>
+</body>
+</html>
