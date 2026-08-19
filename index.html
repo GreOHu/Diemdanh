@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Hệ Thống Điểm Danh QR</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 13px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 10px 20px rgba(108, 117, 125, 0.3);
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+
+        .info {
+            background: #e7f3ff;
+            color: #0c5aa0;
+            border-left: 4px solid #2196F3;
+        }
+
+        .qr-display {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .qr-display.show {
+            display: block;
+        }
+
+        .qr-display img {
+            max-width: 100%;
+            height: auto;
+            border: 2px solid #667eea;
+            border-radius: 6px;
+            padding: 10px;
+            background: white;
+        }
+
+        .qr-display p {
+            margin-top: 15px;
+            color: #555;
+            font-size: 13px;
+        }
+
+        .qr-display .qr-url {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            word-break: break-all;
+            font-size: 11px;
+            margin-top: 10px;
+            color: #333;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .button-group button {
+            margin: 0;
+        }
+
+        /* ============ MAP PICKER ============ */
+        .map-toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .map-toolbar button {
+            width: auto;
+            flex: 1;
+            min-width: 140px;
+            padding: 10px 14px;
+            font-size: 13px;
+            background: #17a2b8;
+        }
+
+        .map-toolbar button:hover {
+            box-shadow: 0 10px 20px rgba(23, 162, 184, 0.3);
+        }
+
+        .map-toolbar button.locating {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        #mapPicker {
+            width: 100%;
+            height: 300px;
+            border-radius: 6px;
+            border: 2px solid #ddd;
+            margin-bottom: 8px;
+            z-index: 1;
+        }
+
+        .map-coords-readout {
+            background: #f0f4ff;
+            border: 1px solid #c9d6ff;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 13px;
+            color: #333;
+            margin-bottom: 12px;
+            font-family: 'Consolas', monospace;
+        }
+
+        .map-coords-readout b {
+            color: #667eea;
+        }
+
+        .map-hint {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        /* ============ ATTENDANCE LIST ============ */
+        .attendance-list {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .attendance-list.show {
+            display: block;
+        }
+
+        .attendance-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: white;
+        }
+
+        .attendance-table th,
+        .attendance-table td {
+            padding: 8px 6px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .attendance-table th {
+            background: #667eea;
+            color: white;
+            position: sticky;
+            top: 0;
+            font-weight: 600;
+        }
+
+        .attendance-table tr:hover {
+            background: #f5f5ff;
+        }
+
+        .attendance-empty {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-size: 13px;
+        }
+
+        @media (max-width: 600px) {
+            .button-group {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Admin Panel</h1>
+            <p>Hệ Thống Điểm Danh QR - Đảng ủy phường Trị An</p>
+        </div>
+
+        <div class="content">
+            <!-- Login Section -->
+            <div class="section active" id="loginSection">
+                <h2 style="margin-bottom: 25px; color: #333;">Đăng Nhập Admin</h2>
+                
+                <div class="message error" id="loginError"></div>
+
+                <div class="form-group">
+                    <label for="adminPassword">Mật Khẩu Admin:</label>
+                    <input type="password" id="adminPassword" placeholder="Nhập mật khẩu" 
+                           onkeypress="if(event.key==='Enter') checkPassword()">
+                </div>
+
+                <button onclick="checkPassword()">🔓 Đăng Nhập</button>
+            </div>
+
+            <!-- Admin Panel Section -->
+            <div class="section" id="adminSection">
+                <h2 style="margin-bottom: 25px; color: #333;">⚙️ Cấu Hình Cuộc Họp</h2>
+
+                <div class="message error" id="configError"></div>
+                <div class="message success" id="configSuccess"></div>
+
+                <div class="form-group">
+                    <label for="meetingTitle">Tên Cuộc Họp <span style="color: red;">*</span></label>
+                    <input type="text" id="meetingTitle" placeholder="Ví dụ: Họp Báo Cáo Quý III">
+                </div>
+
+                <div class="form-group">
+                    <label for="unitName">Tên Đơn Vị <span style="color: red;">*</span></label>
+                    <input type="text" id="unitName" placeholder="Ví dụ: Đảng ủy phường Trị An" value="Đảng ủy phường Trị An">
+                </div>
+
+                <div class="form-group">
+                    <label for="meetingDate">Ngày Họp <span style="color: red;">*</span></label>
+                    <input type="date" id="meetingDate">
+                </div>
+
+                <div class="form-group">
+                    <label for="meetingTime">Giờ Họp <span style="color: red;">*</span></label>
+                    <input type="time" id="meetingTime" value="09:00">
+                </div>
+
+                <div class="form-group">
+                    <label for="location">Địa Điểm Họp <span style="color: red;">*</span></label>
+                    <input type="text" id="location" placeholder="Ví dụ: Trụ Sở Phường Trị An">
+                </div>
+
+                <div class="form-group">
+                    <label for="coordinates">GPS Tọa Độ (lat,lng) <span style="color: red;">*</span></label>
+
+                    <div class="map-toolbar">
+                        <button type="button" onclick="locateMe()" id="locateBtn">📍 Lấy Vị Trí Hiện Tại</button>
+                        <button type="button" onclick="searchOnMap()" style="background:#6c757d;">🔍 Tìm Kiếm Địa Điểm</button>
+                    </div>
+
+                    <div id="mapPicker"></div>
+                    <div class="map-coords-readout" id="mapReadout">
+                        📌 Chưa chọn vị trí — click vào bản đồ hoặc kéo pin để chọn tọa độ
+                    </div>
+                    <p class="map-hint">💡 Click hoặc kéo pin trên bản đồ để chọn vị trí họp. Tọa độ sẽ tự động điền vào ô bên dưới.</p>
+
+                    <input type="text" id="coordinates" placeholder="Ví dụ: 10.9472,106.8192" onchange="onCoordinatesTyped()">
+                    <small style="color: #999; display: block; margin-top: 5px;">
+                        💡 Có thể dán trực tiếp tọa độ copy từ Google Maps (hỗ trợ cả "lat, lng" và "lat,lng")
+                    </small>
+                </div>
+
+                <button onclick="saveConfig()">💾 Lưu Cấu Hình & Tạo QR</button>
+                <button class="btn-secondary" onclick="logout()">🚪 Đăng Xuất</button>
+
+                <!-- QR Display -->
+                <div class="qr-display" id="qrDisplay">
+                    <h3 style="color: #333; margin-bottom: 15px;">📱 Mã QR Cuộc Họp</h3>
+                    <img id="qrImage" src="" alt="QR Code">
+                    <p style="font-weight: 600; color: #28a745; margin-top: 10px;">✅ Cấu hình thành công!</p>
+                    <p style="margin-top: 10px;">URL để quét:</p>
+                    <div class="qr-url" id="qrUrl"></div>
+                    <div class="button-group">
+                        <button onclick="downloadQR()" style="background: #28a745;">⬇️ Tải QR</button>
+                        <button onclick="copyQRUrl()" style="background: #17a2b8;">📋 Copy URL</button>
+                    </div>
+                    <button onclick="toggleAttendanceList()" style="background: #6f42c1; margin-top: 10px;">📋 Xem Danh Sách Điểm Danh</button>
+
+                    <!-- Attendance List -->
+                    <div class="attendance-list" id="attendanceList">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <h3 style="color:#333; margin:0;">📋 Danh Sách Đã Điểm Danh</h3>
+                            <span id="attendanceCount" style="font-size:13px; color:#667eea; font-weight:600;"></span>
+                        </div>
+                        <div class="message error" id="attendanceError"></div>
+                        <div id="attendanceLoading" style="text-align:center; padding:15px; color:#888; display:none;">⏳ Đang tải...</div>
+                        <div id="attendanceTableWrap" style="max-height:320px; overflow-y:auto;">
+                            <table class="attendance-table" id="attendanceTable">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Họ Tên</th>
+                                        <th>Chức Vụ</th>
+                                        <th>Đơn Vị</th>
+                                        <th>Giờ</th>
+                                        <th>Lần</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="attendanceTableBody"></tbody>
+                            </table>
+                        </div>
+                        <button onclick="loadAttendanceList()" class="btn-secondary" style="margin-top:10px;">🔄 Làm Mới</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // ============ CONFIG ============
+        const ADMIN_PASSWORD = 'admin123';
+        const DEBUG = true;
+        const DEFAULT_MAP_CENTER = [10.9472, 106.8192]; // Trị An, Đồng Nai (fallback)
+        const DEFAULT_MAP_ZOOM = 15;
+        // Phải khớp với GOOGLE_APPS_SCRIPT_URL trong checkin.html và googleAppsScriptURL trong config.json
+        const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx-tJF4tAJrpl48r1IgC5gwecyC5N12sQqMjIxPrPbu1jspeXBnDcS6fd4syl9fgFClsA/exec';
+
+        // ============ LOGGING ============
+        function log(msg, data = null) {
+            if (DEBUG) {
+                console.log(`[ADMIN] ${msg}`, data || '');
+            }
+        }
+
+        // ============ CHECK PASSWORD ============
+        function checkPassword() {
+            log('🔐 checkPassword()');
+            const password = document.getElementById('adminPassword').value;
+
+            if (password === ADMIN_PASSWORD) {
+                log('✓ Password correct');
+                showSection('adminSection');
+                loadConfigToForm();
+                setTimeout(initMapPicker, 100); // đợi section hiện ra rồi mới init map (Leaflet cần div có kích thước thật)
+            } else {
+                log('❌ Password incorrect');
+                showMessage('loginError', '❌ Mật khẩu sai. Vui lòng thử lại.');
+                document.getElementById('adminPassword').value = '';
+            }
+        }
+
+        // ============ LOAD CONFIG TO FORM ============
+        function loadConfigToForm() {
+            log('📥 loadConfigToForm()');
+            const saved = localStorage.getItem('meetingConfig');
+            if (saved) {
+                try {
+                    const config = JSON.parse(saved);
+                    log('✓ Loaded config:', config);
+                    document.getElementById('meetingTitle').value = config.meetingTitle || '';
+                    document.getElementById('unitName').value = config.unitName || 'Đảng ủy phường Trị An';
+                    document.getElementById('meetingDate').value = config.meetingDate || '';
+                    document.getElementById('meetingTime').value = config.meetingTime || '09:00';
+                    document.getElementById('location').value = config.location || '';
+                    document.getElementById('coordinates').value = config.coordinates || '';
+                    pendingInitialCoordinates = config.coordinates || null;
+                    currentMeetingID = config.meetingID || null;
+                } catch (e) {
+                    log('⚠️ Error loading config:', e);
+                }
+            }
+        }
+
+        // ============ MAP PICKER ============
+        let currentMeetingID = null; // Meeting ID của cuộc họp vừa cấu hình — dùng để tải danh sách điểm danh
+        let mapInstance = null;
+        let mapMarker = null;
+        let pendingInitialCoordinates = null;
+
+        function initMapPicker() {
+            log('🗺️ initMapPicker()');
+
+            if (mapInstance) {
+                // Map đã khởi tạo trước đó, chỉ cần refresh kích thước (tránh lỗi Leaflet khi div ẩn lúc init)
+                mapInstance.invalidateSize();
+                return;
+            }
+
+            mapInstance = L.map('mapPicker').setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(mapInstance);
+
+            // Nếu form đã có tọa độ sẵn (đang sửa cấu hình cũ), đặt marker ngay tại đó
+            const existingCoords = pendingInitialCoordinates || document.getElementById('coordinates').value;
+            const parsed = parseCoordinates(existingCoords);
+            if (parsed) {
+                placeMarker(parsed.lat, parsed.lng, false);
+                mapInstance.setView([parsed.lat, parsed.lng], DEFAULT_MAP_ZOOM);
+            }
+
+            // Click trên bản đồ để chọn tọa độ
+            mapInstance.on('click', (e) => {
+                log('🖱️ Map clicked:', e.latlng);
+                placeMarker(e.latlng.lat, e.latlng.lng, true);
+            });
+
+            // Hiển thị tọa độ realtime khi di chuột
+            mapInstance.on('mousemove', (e) => {
+                updateReadout(e.latlng.lat, e.latlng.lng, false);
+            });
+
+            mapInstance.on('mouseout', () => {
+                const coords = parseCoordinates(document.getElementById('coordinates').value);
+                if (coords) {
+                    updateReadout(coords.lat, coords.lng, true);
+                } else {
+                    document.getElementById('mapReadout').innerHTML =
+                        '📌 Chưa chọn vị trí — click vào bản đồ hoặc kéo pin để chọn tọa độ';
+                }
+            });
+
+            // Đảm bảo Leaflet vẽ đúng kích thước sau khi container hiện ra
+            setTimeout(() => mapInstance.invalidateSize(), 200);
+        }
+
+        function placeMarker(lat, lng, updateInput) {
+            if (mapMarker) {
+                mapMarker.setLatLng([lat, lng]);
+            } else {
+                mapMarker = L.marker([lat, lng], { draggable: true }).addTo(mapInstance);
+                mapMarker.on('dragend', () => {
+                    const pos = mapMarker.getLatLng();
+                    log('🖱️ Marker dragged:', pos);
+                    placeMarker(pos.lat, pos.lng, true);
+                });
+            }
+
+            if (updateInput) {
+                document.getElementById('coordinates').value = formatCoordinates(lat, lng);
+            }
+            updateReadout(lat, lng, true);
+        }
+
+        function updateReadout(lat, lng, isSelected) {
+            const el = document.getElementById('mapReadout');
+            const label = isSelected ? '✅ Đã chọn' : '🖱️ Đang trỏ tới';
+            el.innerHTML = `${label}: <b>${lat.toFixed(6)}, ${lng.toFixed(6)}</b>`;
+        }
+
+        // Khi người dùng tự gõ/dán tọa độ vào ô input, đồng bộ ngược lại lên map
+        function onCoordinatesTyped() {
+            const raw = document.getElementById('coordinates').value;
+            const parsed = parseCoordinates(raw);
+
+            if (!parsed) {
+                log('⚠️ Coordinates typed nhưng không parse được:', raw);
+                return;
+            }
+
+            // Chuẩn hóa lại giá trị hiển thị trong ô input (bỏ khoảng trắng thừa,...)
+            document.getElementById('coordinates').value = formatCoordinates(parsed.lat, parsed.lng);
+
+            if (mapInstance) {
+                placeMarker(parsed.lat, parsed.lng, false);
+                mapInstance.setView([parsed.lat, parsed.lng], DEFAULT_MAP_ZOOM);
+            }
+        }
+
+        // Lấy vị trí hiện tại của thiết bị (PC hoặc điện thoại) qua Geolocation API
+        function locateMe() {
+            log('📍 locateMe()');
+            const btn = document.getElementById('locateBtn');
+
+            if (!navigator.geolocation) {
+                showMessage('configError', '❌ Trình duyệt không hỗ trợ định vị GPS');
+                return;
+            }
+
+            btn.classList.add('locating');
+            btn.textContent = '⏳ Đang định vị...';
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    log('✓ Geolocation OK:', position.coords);
+                    const { latitude, longitude } = position.coords;
+                    placeMarker(latitude, longitude, true);
+                    if (mapInstance) {
+                        mapInstance.setView([latitude, longitude], DEFAULT_MAP_ZOOM);
+                    }
+                    btn.classList.remove('locating');
+                    btn.textContent = '📍 Lấy Vị Trí Hiện Tại';
+                    showMessage('configSuccess', '✅ Đã lấy vị trí hiện tại');
+                },
+                (error) => {
+                    log('❌ Geolocation error:', error.message);
+                    btn.classList.remove('locating');
+                    btn.textContent = '📍 Lấy Vị Trí Hiện Tại';
+                    showMessage('configError', '❌ Không thể lấy vị trí: ' + error.message + ' (Kiểm tra quyền truy cập vị trí trong trình duyệt)');
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // Tìm kiếm địa điểm bằng tên (dùng Nominatim - OpenStreetMap geocoding, miễn phí)
+        function searchOnMap() {
+            const query = prompt('Nhập tên địa điểm cần tìm (ví dụ: UBND phường Trị An, Biên Hòa):');
+            if (!query || !query.trim()) return;
+
+            log('🔍 searchOnMap():', query);
+
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`)
+                .then(res => res.json())
+                .then(results => {
+                    if (!results || results.length === 0) {
+                        showMessage('configError', '❌ Không tìm thấy địa điểm. Thử click trực tiếp trên bản đồ.');
+                        return;
+                    }
+                    const { lat, lon } = results[0];
+                    const latNum = parseFloat(lat);
+                    const lngNum = parseFloat(lon);
+                    placeMarker(latNum, lngNum, true);
+                    if (mapInstance) {
+                        mapInstance.setView([latNum, lngNum], DEFAULT_MAP_ZOOM);
+                    }
+                    log('✓ Search result:', results[0]);
+                })
+                .catch(err => {
+                    log('❌ Search error:', err);
+                    showMessage('configError', '❌ Lỗi tìm kiếm. Vui lòng thử click trực tiếp trên bản đồ.');
+                });
+        }
+
+        // ============ COORDINATES PARSING / VALIDATION ============
+        // Chấp nhận nhiều định dạng người dùng có thể dán vào:
+        //   "10.9472,106.8192"   (chuẩn)
+        //   "10.9472, 106.8192"  (có khoảng trắng - phổ biến nhất khi copy từ Google Maps)
+        //   "10.9472 , 106.8192"
+        //   "10.9472  106.8192"  (cách nhau bằng khoảng trắng thay vì dấu phẩy)
+        function parseCoordinates(raw) {
+            if (!raw) return null;
+            const cleaned = raw.trim();
+
+            // Thử tách theo dấu phẩy trước, nếu không có thì tách theo khoảng trắng
+            let parts;
+            if (cleaned.includes(',')) {
+                parts = cleaned.split(',');
+            } else {
+                parts = cleaned.split(/\s+/);
+            }
+
+            if (parts.length !== 2) return null;
+
+            const lat = parseFloat(parts[0].trim());
+            const lng = parseFloat(parts[1].trim());
+
+            if (isNaN(lat) || isNaN(lng)) return null;
+            if (lat < -90 || lat > 90) return null;
+            if (lng < -180 || lng > 180) return null;
+
+            return { lat, lng };
+        }
+
+        function formatCoordinates(lat, lng) {
+            // Lưu ở định dạng chuẩn "lat,lng" (không khoảng trắng) để khớp với checkin.html (coords.split(','))
+            return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+        }
+
+        // ============ SAVE CONFIG ============
+        function saveConfig() {
+            log('💾 saveConfig()');
+            
+            const meetingTitle = document.getElementById('meetingTitle').value.trim();
+            const unitName = document.getElementById('unitName').value.trim();
+            const meetingDate = document.getElementById('meetingDate').value.trim();
+            const meetingTime = document.getElementById('meetingTime').value.trim();
+            const location = document.getElementById('location').value.trim();
+            const coordinatesRaw = document.getElementById('coordinates').value.trim();
+
+            // Validation
+            if (!meetingTitle || !unitName || !meetingDate || !meetingTime || !location || !coordinatesRaw) {
+                log('❌ Missing required fields');
+                showMessage('configError', '❌ Vui lòng điền đầy đủ thông tin');
+                return;
+            }
+
+            // Validate & chuẩn hóa coordinates (hỗ trợ "lat,lng", "lat, lng", "lat lng"...)
+            const parsedCoords = parseCoordinates(coordinatesRaw);
+            if (!parsedCoords) {
+                log('❌ Invalid coordinates format:', coordinatesRaw);
+                showMessage('configError', '❌ Tọa độ GPS không hợp lệ. Định dạng: lat,lng (ví dụ: 10.9472,106.8192)');
+                return;
+            }
+            const coordinates = formatCoordinates(parsedCoords.lat, parsedCoords.lng);
+            document.getElementById('coordinates').value = coordinates;
+
+            // Generate Meeting ID
+            const meetingID = generateMeetingID();
+            log('✓ Generated Meeting ID:', meetingID);
+            currentMeetingID = meetingID;
+
+            // Create config object
+            const config = {
+                meetingID,
+                meetingTitle,
+                unitName,
+                meetingDate,
+                meetingTime,
+                location,
+                coordinates
+            };
+
+            // Save to localStorage
+            localStorage.setItem('meetingConfig', JSON.stringify(config));
+            log('✓ Config saved to localStorage');
+
+            // Generate QR
+            generateQR(meetingID);
+
+            // Ẩn danh sách điểm danh cũ (nếu đang mở) vì đã sang cuộc họp mới
+            document.getElementById('attendanceList').classList.remove('show');
+            document.getElementById('attendanceTableBody').innerHTML = '';
+
+            // Show success message
+            showMessage('configSuccess', '✅ Cấu hình đã lưu thành công!');
+        }
+
+        // ============ GENERATE MEETING ID ============
+        function generateMeetingID() {
+            // Format: DIEMDANH-YYYYMMDD-HHMMSS-RANDOM
+            const now = new Date();
+            const dateStr = now.getFullYear() + 
+                           String(now.getMonth() + 1).padStart(2, '0') + 
+                           String(now.getDate()).padStart(2, '0');
+            const timeStr = String(now.getHours()).padStart(2, '0') + 
+                           String(now.getMinutes()).padStart(2, '0') + 
+                           String(now.getSeconds()).padStart(2, '0');
+            const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            return `DIEMDANH-${dateStr}-${timeStr}-${random}`;
+        }
+
+        // ============ GENERATE QR ============
+        function generateQR(meetingID) {
+            log('📱 generateQR():', meetingID);
+
+            // Nhúng toàn bộ config vào URL (base64) để checkin.html đọc được trên MỌI thiết bị,
+            // vì localStorage không dùng chung được giữa PC cấu hình và điện thoại quét QR.
+            const configForUrl = {
+                meetingID,
+                meetingTitle: document.getElementById('meetingTitle').value.trim(),
+                unitName: document.getElementById('unitName').value.trim(),
+                meetingDate: document.getElementById('meetingDate').value.trim(),
+                meetingTime: document.getElementById('meetingTime').value.trim(),
+                location: document.getElementById('location').value.trim(),
+                coordinates: document.getElementById('coordinates').value.trim()
+            };
+            const encodedData = encodeConfigForUrl(configForUrl);
+            log('✓ Encoded config for URL, length:', encodedData.length);
+
+            // URL để quét - phải là full URL tới checkin.html, mang theo data để không phụ thuộc localStorage
+            const checkInUrl = `https://greohu.github.io/Diemdanh/checkin.html?meeting=${meetingID}&data=${encodedData}`;
+            log('✓ Check-in URL:', checkInUrl);
+
+            // Dùng QR Server API
+            const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(checkInUrl)}`;
+            log('✓ QR API URL:', qrApiUrl);
+
+            // Display QR
+            document.getElementById('qrImage').src = qrApiUrl;
+            document.getElementById('qrUrl').textContent = checkInUrl;
+            document.getElementById('qrDisplay').classList.add('show');
+
+            // Store QR URL for download
+            localStorage.setItem('lastQRUrl', checkInUrl);
+        }
+
+        // ============ ENCODE CONFIG CHO URL ============
+        // Base64 + encodeURIComponent để tọa độ/tiếng Việt an toàn khi đưa vào query string.
+        // unescape/encodeURIComponent xử lý đúng UTF-8 (dấu tiếng Việt) trước khi btoa.
+        function encodeConfigForUrl(config) {
+            const json = JSON.stringify(config);
+            const utf8Safe = encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
+                (match, p1) => String.fromCharCode('0x' + p1));
+            const base64 = btoa(utf8Safe);
+            // base64 chuẩn dùng +/= gây rắc rối trong URL -> chuyển sang base64url
+            return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        // ============ DOWNLOAD QR ============
+        function downloadQR() {
+            log('⬇️ downloadQR()');
+            const img = document.getElementById('qrImage');
+            const link = document.createElement('a');
+            link.href = img.src;
+            link.download = `QR-${new Date().getTime()}.png`;
+            link.click();
+        }
+
+        // ============ COPY QR URL ============
+        function copyQRUrl() {
+            log('📋 copyQRUrl()');
+            const qrUrl = document.getElementById('qrUrl').textContent;
+            navigator.clipboard.writeText(qrUrl).then(() => {
+                showMessage('configSuccess', '✅ Đã copy URL vào clipboard');
+            }).catch(err => {
+                log('❌ Copy error:', err);
+                showMessage('configError', '❌ Không thể copy. Vui lòng copy thủ công.');
+            });
+        }
+
+        // ============ DANH SÁCH ĐIỂM DANH ============
+        function toggleAttendanceList() {
+            log('📋 toggleAttendanceList()');
+            const panel = document.getElementById('attendanceList');
+            const willShow = !panel.classList.contains('show');
+            panel.classList.toggle('show');
+            if (willShow) {
+                loadAttendanceList();
+            }
+        }
+
+        function loadAttendanceList() {
+            log('📋 loadAttendanceList() - Meeting:', currentMeetingID);
+
+            if (!currentMeetingID) {
+                showMessage('attendanceError', '❌ Chưa có cuộc họp nào được cấu hình. Hãy tạo QR trước.');
+                return;
+            }
+
+            if (GOOGLE_APPS_SCRIPT_URL.includes('YOUR_DEPLOYMENT_ID')) {
+                document.getElementById('attendanceError').textContent =
+                    '⚠️ Chưa cấu hình GOOGLE_APPS_SCRIPT_URL trong index.html nên không thể tải danh sách. Xem hướng dẫn trong README.';
+                document.getElementById('attendanceError').classList.add('show');
+                return;
+            }
+
+            document.getElementById('attendanceError').classList.remove('show');
+            document.getElementById('attendanceLoading').style.display = 'block';
+            document.getElementById('attendanceTableBody').innerHTML = '';
+            document.getElementById('attendanceCount').textContent = '';
+
+            fetch(GOOGLE_APPS_SCRIPT_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                    action: 'getAttendanceList',
+                    meetingID: currentMeetingID
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                log('✓ Attendance list response:', data);
+                document.getElementById('attendanceLoading').style.display = 'none';
+
+                if (!data.success) {
+                    document.getElementById('attendanceError').textContent = '❌ ' + (data.message || 'Lỗi khi tải danh sách');
+                    document.getElementById('attendanceError').classList.add('show');
+                    return;
+                }
+
+                renderAttendanceList(data.list || []);
+            })
+            .catch(error => {
+                log('❌ loadAttendanceList error:', error);
+                document.getElementById('attendanceLoading').style.display = 'none';
+                document.getElementById('attendanceError').textContent = '❌ Không thể kết nối tới máy chủ. Kiểm tra kết nối mạng.';
+                document.getElementById('attendanceError').classList.add('show');
+            });
+        }
+
+        function renderAttendanceList(list) {
+            const tbody = document.getElementById('attendanceTableBody');
+            const countEl = document.getElementById('attendanceCount');
+
+            if (!list.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="attendance-empty">Chưa có ai điểm danh cho cuộc họp này</td></tr>';
+                countEl.textContent = '0 người';
+                return;
+            }
+
+            countEl.textContent = list.length + ' người';
+            tbody.innerHTML = list.map(person => `
+                <tr>
+                    <td>${person.stt}</td>
+                    <td>${escapeHtml(person.fullName)}</td>
+                    <td>${escapeHtml(person.position || '-')}</td>
+                    <td>${escapeHtml(person.department || '-')}</td>
+                    <td>${escapeHtml(person.time || '-')}</td>
+                    <td>${person.soLan || 1}</td>
+                </tr>
+            `).join('');
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // ============ LOGOUT ============
+        function logout() {
+            log('🚪 logout()');
+            document.getElementById('adminPassword').value = '';
+            showSection('loginSection');
+        }
+
+        // ============ SHOW SECTION ============
+        function showSection(sectionId) {
+            log('👁️ showSection():', sectionId);
+            document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+            document.getElementById(sectionId).classList.add('active');
+        }
+
+        // ============ SHOW MESSAGE ============
+        function showMessage(elementId, message) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.classList.add('show');
+            log('💬 Message:', message);
+            setTimeout(() => el.classList.remove('show'), 5000);
+        }
+
+        // ============ KEYBOARD ============
+        document.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && document.getElementById('loginSection').classList.contains('active')) {
+                checkPassword();
+            }
+        });
+
+        // ============ INITIALIZE ============
+        window.addEventListener('load', () => {
+            log('🚀 Admin panel loaded');
+        });
+    </script>
+</body>
+</html>
