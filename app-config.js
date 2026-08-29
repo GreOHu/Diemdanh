@@ -26,5 +26,5 @@ const APP_CONFIG = {
     // deployment), Google sinh ra một URL /exec khác — chỉ cần dán URL
     // mới vào ĐÚNG MỘT chỗ này, không phải sửa index.html lẫn checkin.html
     // nữa. Nhớ để "Who has access" = "Anyone" khi deploy.
-    googleAppsScriptURL: 'https://script.google.com/macros/s/AKfycbxixK7lVWRE23LgMH-122T77f189XCT-tY9W53L_pvyW1gJ0POg_Q6inO42fGWgFKnoTg/exec'
+    googleAppsScriptURL: 'https://script.google.com/macros/s/AKfycbzrieBFXUOXxC6Kfq-o1nBbO37aSdsYPz_yZ9BRBDD6-Etj7JtyUUy-5Dl7n-ZVPn2z9w/exec'
 };
