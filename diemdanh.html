@@ -1,0 +1,2737 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Điểm Danh QR</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        /* ============================================================
+           FILE DUY NHẤT — gộp từ index.html (admin) + checkin.html (điểm danh)
+           + app-config.js (cấu hình chung). Chỉ cần upload FILE NÀY lên
+           GitHub Pages, không cần các file kia nữa.
+
+           CÁCH DÙNG:
+           - Mặc định (không có ?mode=admin trong URL) = trang điểm danh
+             cho người tham dự (dùng khi quét QR).
+           - Thêm ?mode=admin vào URL (VD .../diemdanh.html?mode=admin)
+             = trang quản trị, dùng để tạo cuộc họp + xem/tải danh sách.
+             Trang admin dùng được cả trên PC và điện thoại (giao diện
+             tự co giãn theo màn hình).
+           - Hoặc bấm nút ⚙️ ở góc trên-phải trang điểm danh, nhập mật
+             khẩu admin, rồi chọn "Vào trang Admin" hoặc "Điểm danh thay".
+
+           THIẾT KẾ (v5): bảng màu xanh công vụ (navy + teal), font Inter,
+           thẻ bo góc lớn, không còn nền tím-gradient mặc định.
+           ============================================================ */
+        :root {
+            --ink: #0F2138;
+            --ink-soft: #4A5B70;
+            --muted: #8697A8;
+            --brand: #1D4E89;
+            --brand-dark: #123456;
+            --accent: #0EA5A0;
+            --accent-dark: #0B8781;
+            --bg: #EEF2F6;
+            --surface: #FFFFFF;
+            --surface-soft: #F6F8FB;
+            --line: #E2E8F0;
+            --success: #1B8A5A;
+            --success-bg: #E7F6EF;
+            --danger: #C4362D;
+            --danger-bg: #FBEAE9;
+            --warn: #B4790C;
+            --warn-bg: #FDF3DE;
+            --info: #1D6FA5;
+            --info-bg: #E9F3FA;
+            --radius-lg: 20px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 1px 2px rgba(15, 33, 56, 0.04), 0 12px 32px rgba(15, 33, 56, 0.10);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background:
+                radial-gradient(1100px 500px at 15% -10%, #E4ECF6 0%, transparent 60%),
+                radial-gradient(900px 500px at 100% 0%, #E1F4F1 0%, transparent 55%),
+                var(--bg);
+            min-height: 100vh;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 32px 16px;
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            max-width: 480px;
+            width: 100%;
+            overflow: hidden;
+            margin: auto;
+            border: 1px solid rgba(15, 33, 56, 0.05);
+        }
+
+        .container.admin-container {
+            max-width: 640px;
+        }
+
+        .header {
+            background: linear-gradient(160deg, var(--brand) 0%, var(--brand-dark) 100%);
+            color: white;
+            padding: 28px 28px 24px;
+            position: relative;
+        }
+
+        .header .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.72);
+            margin-bottom: 8px;
+        }
+
+        .header .eyebrow .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 0 3px rgba(14, 165, 160, 0.35);
+        }
+
+        /* Nút 3 chấm dọc - lối vào ẩn để mở menu Cài Đặt / Admin.
+           Chỉ hiện trên trang điểm danh (không hiện khi đã ở trang admin). */
+        .settings-gear-btn {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: transparent;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3.5px;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+
+        .settings-gear-btn .dot-menu-dot {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: white;
+            opacity: 0.85;
+        }
+
+        .settings-gear-btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        .settings-gear-btn:hover .dot-menu-dot {
+            opacity: 1;
+        }
+
+        .header h1 {
+            font-size: 21px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin-bottom: 4px;
+        }
+
+        .header p {
+            opacity: 0.78;
+            font-size: 13px;
+        }
+
+        .content {
+            padding: 28px;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+            animation: fadeUp 0.28s ease;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .section.active { animation: none; }
+        }
+
+        h2.section-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 20px;
+            letter-spacing: -0.01em;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 7px;
+            color: var(--ink-soft);
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .form-group label .req {
+            color: var(--danger);
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 13px 14px;
+            border: 1.5px solid var(--line);
+            border-radius: var(--radius-sm);
+            font-size: 15px;
+            font-family: inherit;
+            color: var(--ink);
+            background: var(--surface);
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+            color: var(--muted);
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--brand);
+            box-shadow: 0 0 0 4px rgba(29, 78, 137, 0.10);
+        }
+
+        .form-group.read-only input {
+            background: var(--surface-soft);
+            cursor: not-allowed;
+            color: var(--muted);
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 6px;
+            display: block;
+        }
+
+        button {
+            background: var(--brand);
+            color: white;
+            padding: 13px 20px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 14.5px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+            width: 100%;
+            letter-spacing: -0.005em;
+        }
+
+        button:hover {
+            background: var(--brand-dark);
+            box-shadow: 0 8px 20px rgba(29, 78, 137, 0.22);
+        }
+
+        button:active {
+            transform: translateY(1px);
+            box-shadow: none;
+        }
+
+        button + button {
+            margin-top: 10px;
+        }
+
+        .btn-secondary {
+            background: var(--surface-soft);
+            color: var(--ink-soft);
+            border: 1.5px solid var(--line);
+        }
+
+        .btn-secondary:hover {
+            background: #EAEEF3;
+            color: var(--ink);
+            box-shadow: none;
+        }
+
+        .btn-accent {
+            background: var(--accent);
+        }
+
+        .btn-accent:hover {
+            background: var(--accent-dark);
+            box-shadow: 0 8px 20px rgba(14, 165, 160, 0.25);
+        }
+
+        .btn-success {
+            background: var(--success);
+        }
+
+        .btn-success:hover {
+            background: #146B45;
+            box-shadow: 0 8px 20px rgba(27, 138, 90, 0.22);
+        }
+
+        .btn-muted {
+            background: #5B7185;
+        }
+
+        .btn-muted:hover {
+            background: #48596A;
+        }
+
+        .message {
+            padding: 14px 16px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 18px;
+            font-size: 13.5px;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .success {
+            background: var(--success-bg);
+            color: #0F5C3B;
+            border: 1px solid rgba(27, 138, 90, 0.18);
+        }
+
+        .error {
+            background: var(--danger-bg);
+            color: #8C2621;
+            border: 1px solid rgba(196, 54, 45, 0.18);
+        }
+
+        .info {
+            background: var(--info-bg);
+            color: #144F73;
+            border: 1px solid rgba(29, 111, 165, 0.16);
+        }
+
+        .warning {
+            background: var(--warn-bg);
+            color: #7A5106;
+            border: 1px solid rgba(180, 121, 12, 0.2);
+        }
+
+        .loading {
+            text-align: center;
+            color: var(--brand);
+            padding: 12px 0;
+        }
+
+        .loading p {
+            color: var(--ink-soft);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .spinner {
+            border: 3px solid var(--line);
+            border-top: 3px solid var(--brand);
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            animation: spin 0.85s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .qr-input {
+            font-size: 17px !important;
+            padding: 15px !important;
+            text-align: center;
+            letter-spacing: 0.06em;
+            font-weight: 600;
+        }
+
+        .instruction {
+            background: var(--surface-soft);
+            padding: 14px 16px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 20px;
+            color: var(--ink-soft);
+            font-size: 13.5px;
+            line-height: 1.5;
+            border: 1px solid var(--line);
+        }
+
+        .meeting-info {
+            background: var(--surface-soft);
+            padding: 16px;
+            border-radius: var(--radius-md);
+            margin-bottom: 20px;
+            font-size: 13.5px;
+            color: var(--ink-soft);
+            border: 1px solid var(--line);
+        }
+
+        .meeting-info strong {
+            color: var(--ink);
+        }
+
+        .success-summary {
+            background: var(--surface-soft);
+            border: 1px solid var(--line);
+            border-radius: var(--radius-md);
+            padding: 4px 18px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .success-summary-row {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .success-summary-row:last-child {
+            border-bottom: none;
+        }
+
+        .success-summary-row .label {
+            display: block;
+            font-size: 11.5px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 3px;
+        }
+
+        .success-summary-row .value {
+            display: block;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--ink);
+            word-break: break-word;
+        }
+
+        .position-suggestions {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            background: var(--surface);
+            border: 1.5px solid var(--brand);
+            border-radius: var(--radius-sm);
+            max-height: 190px;
+            overflow-y: auto;
+            z-index: 10;
+            box-shadow: 0 12px 28px rgba(15, 33, 56, 0.16);
+        }
+
+        .position-suggestions.show {
+            display: block;
+        }
+
+        .position-suggestion-item {
+            padding: 11px 14px;
+            font-size: 14px;
+            color: var(--ink);
+            cursor: pointer;
+            border-bottom: 1px solid var(--surface-soft);
+        }
+
+        .position-suggestion-item:last-child {
+            border-bottom: none;
+        }
+
+        .position-suggestion-item:hover,
+        .position-suggestion-item.active {
+            background: var(--info-bg);
+            color: var(--brand);
+        }
+
+        .position-suggestion-item .matched {
+            font-weight: 700;
+            color: var(--brand);
+        }
+
+        .edit-notice {
+            background: var(--warn-bg);
+            border: 1px solid rgba(180, 121, 12, 0.2);
+            color: #7A5106;
+            padding: 14px 16px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 20px;
+            font-size: 13.5px;
+            line-height: 1.5;
+        }
+
+        .qr-display {
+            text-align: center;
+            padding: 22px;
+            background: var(--surface-soft);
+            border: 1px solid var(--line);
+            border-radius: var(--radius-md);
+            margin-top: 22px;
+            display: none;
+        }
+
+        .qr-display.show {
+            display: block;
+        }
+
+        .qr-display img {
+            max-width: 100%;
+            height: auto;
+            border: 1.5px solid var(--line);
+            border-radius: var(--radius-sm);
+            padding: 10px;
+            background: white;
+        }
+
+        .qr-display p {
+            margin-top: 15px;
+            color: var(--ink-soft);
+            font-size: 13px;
+        }
+
+        .qr-display .qr-url {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            word-break: break-all;
+            font-size: 11px;
+            margin-top: 10px;
+            color: var(--ink-soft);
+        }
+
+        .qr-display .short-code-display {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: 0.16em;
+            color: var(--brand);
+            background: var(--info-bg);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            margin-top: 10px;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .button-group button {
+            margin: 0;
+        }
+
+        .shortlink-box {
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--surface);
+            border: 1.5px dashed var(--accent);
+            border-radius: var(--radius-md);
+            text-align: center;
+        }
+
+        .shortlink-box .short-url-display {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--accent-dark);
+            word-break: break-all;
+            margin: 8px 0 12px;
+            background: #E1F4F2;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+        }
+
+        .shortlink-box .shortlink-hint {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 8px;
+        }
+
+        .map-toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .map-toolbar button {
+            width: auto;
+            flex: 1;
+            min-width: 140px;
+            padding: 10px 14px;
+            font-size: 13px;
+            background: var(--accent);
+            margin: 0;
+        }
+
+        .map-toolbar button:hover {
+            background: var(--accent-dark);
+        }
+
+        .map-toolbar button.secondary-map-btn {
+            background: var(--surface-soft);
+            color: var(--ink-soft);
+            border: 1.5px solid var(--line);
+        }
+
+        .map-toolbar button.secondary-map-btn:hover {
+            background: #EAEEF3;
+        }
+
+        .map-toolbar button.locating {
+            opacity: 0.65;
+            pointer-events: none;
+        }
+
+        #mapPicker {
+            width: 100%;
+            height: 280px;
+            border-radius: var(--radius-sm);
+            border: 1.5px solid var(--line);
+            margin-bottom: 8px;
+            z-index: 1;
+        }
+
+        .map-coords-readout {
+            background: var(--info-bg);
+            border: 1px solid rgba(29, 111, 165, 0.16);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            font-size: 13px;
+            color: var(--ink);
+            margin-bottom: 12px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+        }
+
+        .map-coords-readout b {
+            color: var(--brand);
+        }
+
+        .map-hint {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        .attendance-list {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--surface-soft);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--line);
+        }
+
+        .attendance-list.show {
+            display: block;
+        }
+
+        .attendance-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: var(--surface);
+        }
+
+        .attendance-table th,
+        .attendance-table td {
+            padding: 9px 7px;
+            text-align: left;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .attendance-table th {
+            background: var(--brand);
+            color: white;
+            position: sticky;
+            top: 0;
+            font-weight: 600;
+        }
+
+        .attendance-table tr:hover {
+            background: var(--info-bg);
+        }
+
+        .attendance-empty {
+            text-align: center;
+            color: var(--muted);
+            padding: 22px;
+            font-size: 13px;
+        }
+
+        /* ============ Card lựa chọn trong màn Cài Đặt (⚙️) ============ */
+        .settings-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .settings-option-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            width: 100%;
+            text-align: left;
+            padding: 16px;
+            border: 1.5px solid var(--line);
+            border-radius: var(--radius-md);
+            background: var(--surface);
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+            font-family: inherit;
+        }
+
+        .settings-option-card:hover {
+            border-color: var(--brand);
+            box-shadow: 0 8px 20px rgba(15, 33, 56, 0.08);
+        }
+
+        .settings-option-card:active {
+            transform: translateY(1px);
+        }
+
+        .settings-option-card .icon {
+            flex: none;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 19px;
+            background: var(--info-bg);
+        }
+
+        .settings-option-card.variant-accent .icon {
+            background: #E1F4F2;
+        }
+
+        .settings-option-card .text {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .settings-option-card .text .title {
+            font-size: 14.5px;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 2px;
+        }
+
+        .settings-option-card .text .desc {
+            font-size: 12.5px;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+
+        .settings-option-card .chevron {
+            flex: none;
+            color: var(--muted);
+            font-size: 18px;
+        }
+
+        /* ============ Badge trạng thái cuộc họp ============ */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 5px 12px;
+            border-radius: 999px;
+            background: var(--success-bg);
+            color: #0F5C3B;
+        }
+
+        .status-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        /* ============ Link phụ dạng text (điểm danh thay cũ, giờ chỉ dùng
+           cho các liên kết văn bản đơn giản còn sót lại) ============ */
+        .text-link {
+            font-size: 12.5px;
+            color: var(--muted);
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            background: none;
+            border: none;
+            width: auto;
+            padding: 0;
+            cursor: pointer;
+        }
+
+        .text-link:hover {
+            color: var(--ink-soft);
+            background: none;
+            box-shadow: none;
+        }
+
+        .center-icon {
+            font-size: 46px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .center-block {
+            text-align: center;
+        }
+
+        .center-block h2 {
+            margin-bottom: 10px;
+            font-size: 19px;
+            letter-spacing: -0.01em;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 0;
+                align-items: flex-start;
+            }
+
+            .container {
+                border-radius: 0;
+                min-height: 100vh;
+                border: none;
+                box-shadow: none;
+            }
+
+            .button-group {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                padding: 22px 20px 20px;
+            }
+
+            .header h1 {
+                font-size: 19px;
+            }
+
+            .content {
+                padding: 22px 18px 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- ============================================================
+         TRANG ADMIN (?mode=admin) — ẩn/hiện bằng JS lúc trang load,
+         không hiện đồng thời cả 2 trang.
+         ============================================================ -->
+    <div class="container admin-container" id="adminApp" style="display:none;">
+        <div class="header">
+            <span class="eyebrow"><span class="dot"></span>QUẢN TRỊ HỆ THỐNG</span>
+            <h1>Bảng Điều Khiển Admin</h1>
+            <p>Hệ Thống Điểm Danh QR · Đảng ủy phường Trị An</p>
+        </div>
+
+        <div class="content">
+            <!-- Login Section -->
+            <div class="section active" id="loginSection">
+                <h2 class="section-title">Đăng nhập quản trị</h2>
+
+                <div class="message error" id="loginError"></div>
+
+                <div class="form-group">
+                    <label for="adminPassword">Mật khẩu admin</label>
+                    <input type="password" id="adminPassword" placeholder="Nhập mật khẩu"
+                           onkeypress="if(event.key==='Enter') checkPassword()">
+                </div>
+
+                <button onclick="checkPassword()">Đăng nhập</button>
+            </div>
+
+            <!-- Admin Panel Section -->
+            <div class="section" id="adminSection">
+                <h2 class="section-title">Cấu hình cuộc họp</h2>
+
+                <div class="message error" id="configError"></div>
+                <div class="message success" id="configSuccess"></div>
+
+                <div class="form-group">
+                    <label for="meetingTitle">Tên cuộc họp <span class="req">*</span></label>
+                    <input type="text" id="meetingTitle" placeholder="Ví dụ: Họp Báo Cáo Quý III">
+                </div>
+
+                <div class="form-group">
+                    <label for="unitName">Tên đơn vị <span class="req">*</span></label>
+                    <input type="text" id="unitName" placeholder="Ví dụ: Đảng ủy phường Trị An" value="Đảng ủy phường Trị An">
+                </div>
+
+                <div class="form-group">
+                    <label for="meetingDate">Ngày họp <span class="req">*</span></label>
+                    <input type="date" id="meetingDate">
+                </div>
+
+                <div class="form-group">
+                    <label for="meetingTime">Giờ họp <span class="req">*</span></label>
+                    <input type="time" id="meetingTime" value="09:00">
+                </div>
+
+                <div class="form-group">
+                    <label for="location">Địa điểm họp <span class="req">*</span></label>
+                    <input type="text" id="location" placeholder="Ví dụ: Trụ Sở Phường Trị An">
+                </div>
+
+                <div class="form-group">
+                    <label for="coordinates">Tọa độ GPS (lat, lng) <span class="req">*</span></label>
+
+                    <div class="map-toolbar">
+                        <button type="button" onclick="locateMe()" id="locateBtn">📍 Lấy vị trí hiện tại</button>
+                        <button type="button" onclick="searchOnMap()" class="secondary-map-btn">🔍 Tìm địa điểm</button>
+                    </div>
+
+                    <div id="mapPicker"></div>
+                    <div class="map-coords-readout" id="mapReadout">
+                        📌 Chưa chọn vị trí — click vào bản đồ hoặc kéo pin để chọn tọa độ
+                    </div>
+                    <p class="map-hint">Click hoặc kéo pin trên bản đồ để chọn vị trí họp. Tọa độ sẽ tự động điền vào ô bên dưới.</p>
+
+                    <input type="text" id="coordinates" placeholder="Ví dụ: 10.9472,106.8192" onchange="onCoordinatesTyped()">
+                    <span class="form-hint">💡 Có thể dán trực tiếp tọa độ copy từ Google Maps (hỗ trợ cả "lat, lng" và "lat,lng")</span>
+                </div>
+
+                <button onclick="saveConfig()">💾 Lưu cấu hình & tạo QR</button>
+                <button class="btn-secondary" onclick="logout()">Đăng xuất</button>
+
+                <!-- QR Display -->
+                <div class="qr-display" id="qrDisplay">
+                    <h3 style="color: var(--ink); margin-bottom: 15px; font-size: 15px; font-weight: 700;">Mã QR cuộc họp</h3>
+                    <img id="qrImage" src="" alt="QR Code">
+                    <p style="font-weight: 700; color: var(--success); margin-top: 12px;">✅ Cấu hình thành công</p>
+                    <p style="margin-top: 10px;" id="qrUrlLabel">Mã cuộc họp (để nhập tay nếu cần):</p>
+                    <div class="short-code-display" id="qrShortCode"></div>
+                    <div class="qr-url" id="qrUrl" style="margin-top:10px;"></div>
+                    <div class="button-group">
+                        <button onclick="downloadQR()" class="btn-success">⬇️ Tải QR</button>
+                        <button onclick="copyQRUrl()" class="btn-accent">📋 Copy URL</button>
+                    </div>
+                    <button onclick="shortenLink()" id="shortenBtn" style="background: #C2670F; margin-top: 10px;">🔗 Rút gọn link</button>
+                    <div class="message error" id="shortenError" style="margin-top:10px;"></div>
+
+                    <!-- Kết quả link rút gọn -->
+                    <div class="shortlink-box" id="shortlinkBox" style="display: none;">
+                        <div style="font-size:13px; color: var(--ink-soft);">🔗 Link rút gọn để gửi Zalo/SMS (đã thay cho link dài ở trên):</div>
+                        <div class="short-url-display" id="shortUrlDisplay"></div>
+                        <div class="button-group">
+                            <button onclick="copyShortUrl()" class="btn-accent">📋 Copy link ngắn</button>
+                            <button onclick="shortenLink(true)" class="btn-secondary">🔄 Tạo lại</button>
+                        </div>
+                        <div class="shortlink-hint">Link rút gọn, bấm vào sẽ tự chuyển sang link điểm danh đầy đủ.</div>
+                    </div>
+
+                    <button onclick="toggleAttendanceList()" style="background: #5B4B99; margin-top: 10px;">📋 Xem danh sách điểm danh</button>
+
+                    <!-- Attendance List -->
+                    <div class="attendance-list" id="attendanceList">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h3 style="color: var(--ink); margin:0; font-size: 15px; font-weight: 700;">Danh sách đã điểm danh</h3>
+                            <span id="attendanceCount" style="font-size:13px; color: var(--brand); font-weight:700;"></span>
+                        </div>
+
+                        <div style="margin-bottom:12px;">
+                            <label for="attendanceMeetingSelect" style="font-size:12px; color: var(--muted); display:block; margin-bottom:6px; font-weight:600;">
+                                Đang xem cuộc họp (chọn cuộc họp khác nếu cần):
+                            </label>
+                            <select id="attendanceMeetingSelect" onchange="onAttendanceMeetingChange()" style="width:100%; padding:11px; border:1.5px solid var(--line); border-radius:8px; font-size:13px; margin-bottom:8px; font-family:inherit; color: var(--ink); background: var(--surface);">
+                                <option value="">-- Đang tải danh sách cuộc họp... --</option>
+                            </select>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="attendanceMeetingManual" placeholder="Hoặc dán Meeting ID thủ công (DIEMDANH-...)" style="flex:1; padding:9px; border:1.5px solid var(--line); border-radius:8px; font-size:12px; font-family:inherit;">
+                                <button onclick="loadAttendanceListManual()" class="btn-secondary" style="width:auto; padding:9px 16px; margin:0;">Xem</button>
+                            </div>
+                        </div>
+
+                        <div class="message error" id="attendanceError"></div>
+                        <div id="attendanceLoading" style="text-align:center; padding:16px; color: var(--muted); display:none;">⏳ Đang tải...</div>
+                        <div id="attendanceTableWrap" style="max-height:320px; overflow-y:auto; border-radius: 8px; border: 1px solid var(--line);">
+                            <table class="attendance-table" id="attendanceTable">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Họ Tên</th>
+                                        <th>Chức Vụ</th>
+                                        <th>Đơn Vị</th>
+                                        <th>Giờ</th>
+                                        <th>Lần</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="attendanceTableBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="button-group">
+                            <button onclick="loadAttendanceList()" class="btn-secondary" style="margin:0;">🔄 Làm mới</button>
+                            <button onclick="exportAttendanceExcel()" class="btn-success" style="margin:0;">📊 Xuất Excel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         TRANG ĐIỂM DANH (mặc định, không có ?mode=admin)
+         ============================================================ -->
+    <div class="container" id="checkinApp" style="display:none;">
+        <div class="header">
+            <button type="button" class="settings-gear-btn" onclick="openSettingsGear()"
+                    title="Cài đặt" aria-label="Cài đặt">
+                <span class="dot-menu-dot"></span>
+                <span class="dot-menu-dot"></span>
+                <span class="dot-menu-dot"></span>
+            </button>
+            <span class="eyebrow"><span class="dot"></span>ĐIỂM DANH BẰNG QR</span>
+            <h1>Điểm Danh Cuộc Họp</h1>
+            <p id="headerSubtitle">Hệ Thống Điểm Danh</p>
+        </div>
+
+        <div class="content">
+            <!-- QR Scan Section -->
+            <div class="section active" id="qrSection">
+                <div class="instruction" id="instructionText">
+                    📱 Đang mở form điểm danh...
+                </div>
+
+                <div class="message error" id="qrError"></div>
+                <div class="message success" id="qrSuccess"></div>
+                <div class="message warning" id="qrWarning"></div>
+
+                <div class="form-group" id="qrInputGroup" style="display: none;">
+                    <label for="qrInput">Mã cuộc họp</label>
+                    <input type="text" id="qrInput" class="qr-input"
+                           placeholder="Nhập mã cuộc họp (VD: A3F9K2)..."
+                           onchange="processQR()"
+                           onkeypress="if(event.key==='Enter') processQR()">
+                    <button onclick="processQR()" style="margin-top: 12px;">✅ Xác nhận mã</button>
+                </div>
+            </div>
+
+            <!-- Bước 1: Nhập mật khẩu để mở menu Cài Đặt (qua nút bánh răng ⚙️ ở header) -->
+            <div class="section" id="settingsGearSection">
+                <h2 class="section-title">Cài đặt</h2>
+                <div class="instruction">
+                    🔐 Khu vực dành riêng cho admin. Nhập mật khẩu để tiếp tục.
+                </div>
+                <div class="message error" id="settingsGearError"></div>
+                <div class="form-group">
+                    <label for="settingsGearPassword">Mật khẩu admin</label>
+                    <input type="password" id="settingsGearPassword" placeholder="Nhập mật khẩu"
+                           onkeypress="if(event.key==='Enter') submitSettingsGearPassword()">
+                </div>
+                <button onclick="submitSettingsGearPassword()">Tiếp tục</button>
+                <button class="btn-secondary" onclick="cancelSettingsGear()">Quay lại</button>
+            </div>
+
+            <!-- Bước 2: Menu lựa chọn sau khi nhập đúng mật khẩu -->
+            <div class="section" id="settingsMenuSection">
+                <h2 class="section-title">Cài đặt admin</h2>
+                <div class="settings-options">
+                    <button type="button" class="settings-option-card" onclick="goToAdminPanel()">
+                        <span class="icon">🗂️</span>
+                        <span class="text">
+                            <span class="title">Vào trang Admin</span>
+                            <span class="desc">Tạo cuộc họp mới, xem và tải danh sách điểm danh</span>
+                        </span>
+                        <span class="chevron">›</span>
+                    </button>
+                    <button type="button" class="settings-option-card variant-accent" onclick="openAdminOverride()">
+                        <span class="icon">🖊️</span>
+                        <span class="text">
+                            <span class="title">Điểm danh thay</span>
+                            <span class="desc">Điểm danh hộ người có mặt nhưng thiết bị gặp sự cố</span>
+                        </span>
+                        <span class="chevron">›</span>
+                    </button>
+                </div>
+                <button class="btn-secondary" onclick="cancelSettingsGear()">Quay lại</button>
+            </div>
+
+            <!-- GPS Required Section -->
+            <div class="section" id="gpsRequiredSection">
+                <div class="center-block">
+                    <div class="center-icon">📍</div>
+                    <h2 style="color: var(--danger);">Cần bật định vị GPS</h2>
+                    <p style="color: var(--ink-soft); font-size: 14px; margin-bottom: 20px; line-height: 1.5;" id="gpsRequiredReason">
+                        Hệ thống cần xác định vị trí của bạn để điểm danh. Vui lòng bật GPS/dịch vụ định vị
+                        và cho phép trình duyệt truy cập vị trí, sau đó bấm "Thử lại".
+                    </p>
+                    <div class="message error show" id="gpsRequiredError" style="text-align: left;"></div>
+                    <button onclick="retryGPS()">🔄 Thử lại</button>
+                    <div class="message warning show" style="margin: 16px 0 0; text-align: left;">
+                        💡 Trên điện thoại: vào Cài đặt → Vị trí/Định vị → Bật. Nếu trình duyệt hỏi quyền truy cập
+                        vị trí, chọn "Cho phép". Nếu thiết bị thực sự không có GPS hoặc bạn đã có mặt tại hội trường
+                        nhưng vẫn không điểm danh được, hãy liên hệ admin để được điểm danh thay.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Check-in Form Section -->
+            <div class="section" id="formSection">
+                <div class="meeting-info" id="meetingInfo"></div>
+                <div class="edit-notice" id="editNotice" style="display: none;">
+                    ⚠️ Bạn đã điểm danh trước đó. Cập nhật thông tin sẽ ghi đè dữ liệu cũ.
+                </div>
+                <div class="message warning" id="adminOverrideNotice" style="display: none;">
+                    🔑 Đang điểm danh THAY (chế độ Admin) — không kiểm tra GPS, không giới hạn theo thiết bị.
+                </div>
+
+                <div class="message error" id="formError"></div>
+
+                <div class="meeting-info" id="oldDataBox" style="display:none; margin-bottom:16px;">
+                    <p style="margin: 0 0 8px; color: var(--warn); font-size: 12px; font-weight: 700;">📋 THÔNG TIN CŨ (để đối chiếu khi sửa):</p>
+                    <div style="margin: 6px 0; font-size: 13px;"><strong>Họ tên:</strong> <span id="oldDataName"></span></div>
+                    <div style="margin: 6px 0; font-size: 13px;"><strong>Chức vụ:</strong> <span id="oldDataPosition"></span></div>
+                    <div style="margin: 6px 0; font-size: 13px;"><strong>Đơn vị:</strong> <span id="oldDataDepartment"></span></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="fullName">Họ và tên <span class="req">*</span></label>
+                    <input type="text" id="fullName" placeholder="Ví dụ: Nguyễn Văn A">
+                </div>
+
+                <div class="form-group">
+                    <label for="position">Chức vụ</label>
+                    <div style="position: relative;">
+                        <input type="text" id="position" placeholder="Ví dụ: Bí thư Đảng ủy" autocomplete="off"
+                               oninput="onPositionInput()" onfocus="onPositionInput()" onblur="hidePositionSuggestionsDelayed()">
+                        <div id="positionSuggestions" class="position-suggestions"></div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="department">Đơn vị</label>
+                    <div style="position: relative;">
+                        <input type="text" id="department" placeholder="Gõ để tìm trong danh sách, hoặc nhập đơn vị khác" autocomplete="off"
+                               oninput="onDepartmentInput()" onfocus="onDepartmentInput()" onblur="hideDepartmentSuggestionsDelayed()">
+                        <div id="departmentSuggestions" class="position-suggestions"></div>
+                    </div>
+                </div>
+
+                <button onclick="submitForm()">✅ Gửi thông tin điểm danh</button>
+                <button class="btn-secondary" onclick="cancelForm()">Quay lại</button>
+            </div>
+
+            <!-- Loading Section -->
+            <div class="section" id="loadingSection">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Đang xử lý...</p>
+                </div>
+            </div>
+
+            <!-- Success Section -->
+            <div class="section" id="successSection">
+                <div class="center-block">
+                    <div class="center-icon">✅</div>
+                    <h2 style="color: var(--success);">Điểm danh thành công!</h2>
+                    <div class="success-summary">
+                        <div class="success-summary-row">
+                            <span class="label">Họ tên</span>
+                            <span class="value" id="successName"></span>
+                        </div>
+                        <div class="success-summary-row">
+                            <span class="label">Chức vụ</span>
+                            <span class="value" id="successPosition"></span>
+                        </div>
+                        <div class="success-summary-row">
+                            <span class="label">Đơn vị</span>
+                            <span class="value" id="successDepartment"></span>
+                        </div>
+                        <div class="success-summary-row">
+                            <span class="label">Thời gian</span>
+                            <span class="value" id="successTime"></span>
+                        </div>
+                    </div>
+                    <button onclick="editFromSuccess()">✏️ Sửa lại thông tin</button>
+                </div>
+            </div>
+
+            <!-- Already Checked In Section -->
+            <div class="section" id="alreadyCheckedInSection">
+                <div class="center-block">
+                    <div class="center-icon">⚠️</div>
+                    <h2 style="color: var(--danger);">Bạn đã điểm danh rồi!</h2>
+                    <div class="meeting-info">
+                        <p style="margin: 0 0 12px; color: var(--ink-soft); font-size: 14px;">
+                            Thiết bị này đã được đăng ký điểm danh cho:
+                        </p>
+                        <div style="margin: 10px 0;"><strong>Họ tên:</strong> <span id="checkedInName"></span></div>
+                        <div style="margin: 10px 0;"><strong>Chức vụ:</strong> <span id="checkedInPosition"></span></div>
+                        <div style="margin: 10px 0;"><strong>Đơn vị:</strong> <span id="checkedInDepartment"></span></div>
+                        <div style="margin: 10px 0;"><strong>Thời gian:</strong> <span id="checkedInTime"></span></div>
+                    </div>
+                    <div class="message warning show" style="text-align:left;">
+                        💡 Nếu cần sửa lại thông tin, bấm nút "Sửa" bên dưới.
+                    </div>
+                    <button onclick="editFromCheckedIn()">✏️ Sửa lại thông tin</button>
+                    <button class="btn-secondary" onclick="cancelForm()">Nhập mã khác</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // ============================================================
+        // CẤU HÌNH DÙNG CHUNG (trước đây ở file app-config.js riêng)
+        // Muốn đổi bán kính GPS, mật khẩu admin, URL Apps Script — CHỈ
+        // sửa object dưới đây, sửa xong upload lại đúng 1 file này lên
+        // GitHub Pages là xong, không cần sửa gì khác trong toàn bộ file.
+        // ============================================================
+        const APP_CONFIG = {
+            // Bán kính GPS cho phép (mét).
+            gpsRadius: 30,
+            // Mật khẩu admin — dùng để đăng nhập trang Admin và mở "Điểm danh thay".
+            adminPassword: 'admin123',
+            // URL deploy Google Apps Script Web App (kết thúc bằng /exec).
+            googleAppsScriptURL: 'https://script.google.com/macros/s/AKfycbzrieBFXUOXxC6Kfq-o1nBbO37aSdsYPz_yZ9BRBDD6-Etj7JtyUUy-5Dl7n-ZVPn2z9w/exec'
+        };
+
+        const GOOGLE_APPS_SCRIPT_URL = APP_CONFIG.googleAppsScriptURL;
+        const DEBUG = true;
+
+        // ============ CHỌN CHẾ ĐỘ: admin hay checkin ============
+        // ?mode=admin trong URL -> hiện trang Admin. Mặc định -> trang điểm danh.
+        const IS_ADMIN_MODE = new URLSearchParams(window.location.search).get('mode') === 'admin';
+
+        function log(msg, data = null) {
+            if (DEBUG) {
+                console.log(`[${IS_ADMIN_MODE ? 'ADMIN' : 'DIEMDANH'}] ${msg}`, data || '');
+            }
+        }
+
+        // ============ GỌI GOOGLE APPS SCRIPT QUA fetch/POST (dùng chung) ============
+        function callGAS(payload) {
+            return fetch(GOOGLE_APPS_SCRIPT_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => {
+                log('📡 callGAS HTTP status:', response.status);
+                return response.text().then(text => {
+                    if (!response.ok) {
+                        throw new Error('Server trả về lỗi HTTP ' + response.status + ': ' + text.substring(0, 200));
+                    }
+                    try {
+                        return JSON.parse(text);
+                    } catch (parseErr) {
+                        log('❌ Response không phải JSON:', text.substring(0, 300));
+                        throw new Error('Server trả về dữ liệu không hợp lệ (có thể do URL deploy sai hoặc quyền truy cập chưa đặt "Anyone"). Nội dung nhận được: ' + text.substring(0, 150));
+                    }
+                });
+            })
+            .catch(error => {
+                log('❌ callGAS lỗi:', error.message);
+                throw error;
+            });
+        }
+
+        // ============ GỌI GOOGLE APPS SCRIPT QUA JSONP (cho lệnh tự động lúc trang vừa mở) ============
+        let jsonpCallbackCounter = 0;
+        function callGASJsonp(payload, timeoutMs = 10000) {
+            return new Promise((resolve, reject) => {
+                jsonpCallbackCounter++;
+                const callbackName = 'gasJsonpCallback_' + Date.now() + '_' + jsonpCallbackCounter;
+
+                const script = document.createElement('script');
+                let settled = false;
+
+                const cleanup = () => {
+                    delete window[callbackName];
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                    clearTimeout(timer);
+                };
+
+                const timer = setTimeout(() => {
+                    if (settled) return;
+                    settled = true;
+                    log('⏱️ callGASJsonp timeout:', payload.action);
+                    cleanup();
+                    reject(new Error('Hết thời gian chờ phản hồi từ server (JSONP timeout)'));
+                }, timeoutMs);
+
+                window[callbackName] = (data) => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    resolve(data);
+                };
+
+                script.onerror = () => {
+                    if (settled) return;
+                    settled = true;
+                    log('❌ callGASJsonp lỗi tải script:', payload.action);
+                    cleanup();
+                    reject(new Error('Không tải được dữ liệu qua JSONP (kiểm tra lại doGet() trong Apps Script có xử lý callback không)'));
+                };
+
+                const params = new URLSearchParams();
+                Object.keys(payload).forEach(key => params.append(key, payload[key]));
+                params.append('callback', callbackName);
+
+                script.src = GOOGLE_APPS_SCRIPT_URL + '?' + params.toString();
+                log('📡 callGASJsonp gọi:', script.src);
+                document.head.appendChild(script);
+            });
+        }
+
+        // ============ SHOW SECTION (dùng chung) ============
+        function showSection(sectionId) {
+            log('👁️ showSection():', sectionId);
+            document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
+            document.getElementById(sectionId).classList.add('active');
+        }
+
+        // ============ SHOW MESSAGE (dùng chung) ============
+        function showMessage(elementId, message) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.classList.add('show');
+            log('💬 Message:', message);
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // Bỏ dấu tiếng Việt để so khớp gợi ý không phân biệt có dấu/không dấu (dùng chung)
+        function stripDiacritics(str) {
+            return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
+        }
+
+        // ============================================================
+        // KHỞI TẠO: chỉ chạy đúng 1 bộ logic (admin HOẶC checkin) tùy
+        // vào ?mode=admin trên URL.
+        // ============================================================
+        window.addEventListener('load', () => {
+            if (IS_ADMIN_MODE) {
+                document.getElementById('adminApp').style.display = '';
+                document.title = 'Admin - Hệ Thống Điểm Danh QR';
+                log('🚀 Admin panel loaded');
+            } else {
+                document.getElementById('checkinApp').style.display = '';
+                initCheckinApp();
+            }
+        });
+    </script>
+
+    <!-- ================= LOGIC TRANG ADMIN ================= -->
+    <script>
+        const DEFAULT_MAP_CENTER = [10.9472, 106.8192]; // Trị An, Đồng Nai (fallback)
+        const DEFAULT_MAP_ZOOM = 15;
+        const ADMIN_PASSWORD = APP_CONFIG.adminPassword;
+
+        // ============ CHECK PASSWORD ============
+        function checkPassword() {
+            log('🔐 checkPassword()');
+            const password = document.getElementById('adminPassword').value;
+
+            if (password === ADMIN_PASSWORD) {
+                log('✓ Password correct');
+                showSection('adminSection');
+                loadConfigToForm();
+                setTimeout(initMapPicker, 100);
+
+                if (currentMeetingID) {
+                    log('✓ Đã có cuộc họp lưu sẵn, hiện lại QR:', currentMeetingID);
+                    // Cấu hình đã lưu sẵn có thể chưa có shortCode nếu là dữ liệu cũ trước bản này —
+                    // trong trường hợp đó chỉ hiện lại danh sách điểm danh, không hiện lại QR cũ.
+                    if (currentShortCode) {
+                        renderQR(currentMeetingID, currentShortCode);
+                    }
+                }
+            } else {
+                log('❌ Password incorrect');
+                showMessage('loginError', '❌ Mật khẩu sai. Vui lòng thử lại.');
+                document.getElementById('adminPassword').value = '';
+            }
+        }
+
+        // ============ LOAD CONFIG TO FORM ============
+        function loadConfigToForm() {
+            log('📥 loadConfigToForm()');
+            const saved = localStorage.getItem('meetingConfig');
+            if (saved) {
+                try {
+                    const config = JSON.parse(saved);
+                    log('✓ Loaded config:', config);
+                    document.getElementById('meetingTitle').value = config.meetingTitle || '';
+                    document.getElementById('unitName').value = config.unitName || 'Đảng ủy phường Trị An';
+                    document.getElementById('meetingDate').value = config.meetingDate || '';
+                    document.getElementById('meetingTime').value = config.meetingTime || '09:00';
+                    document.getElementById('location').value = config.location || '';
+                    document.getElementById('coordinates').value = config.coordinates || '';
+                    pendingInitialCoordinates = config.coordinates || null;
+                    currentMeetingID = config.meetingID || null;
+                    currentShortCode = localStorage.getItem('lastShortCode') || null;
+                } catch (e) {
+                    log('⚠️ Error loading config:', e);
+                }
+            }
+        }
+
+        // ============ MAP PICKER ============
+        let currentMeetingID = null;
+        let currentShortCode = null; // Mã ngắn của cuộc họp vừa lưu (nội dung thực sự nhúng vào QR)
+        let mapInstance = null;
+        let mapMarker = null;
+        let pendingInitialCoordinates = null;
+
+        function initMapPicker() {
+            log('🗺️ initMapPicker()');
+
+            if (mapInstance) {
+                mapInstance.invalidateSize();
+                return;
+            }
+
+            mapInstance = L.map('mapPicker').setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(mapInstance);
+
+            const existingCoords = pendingInitialCoordinates || document.getElementById('coordinates').value;
+            const parsed = parseCoordinates(existingCoords);
+            if (parsed) {
+                placeMarker(parsed.lat, parsed.lng, false);
+                mapInstance.setView([parsed.lat, parsed.lng], DEFAULT_MAP_ZOOM);
+            }
+
+            mapInstance.on('click', (e) => {
+                log('🖱️ Map clicked:', e.latlng);
+                placeMarker(e.latlng.lat, e.latlng.lng, true);
+            });
+
+            mapInstance.on('mousemove', (e) => {
+                updateReadout(e.latlng.lat, e.latlng.lng, false);
+            });
+
+            mapInstance.on('mouseout', () => {
+                const coords = parseCoordinates(document.getElementById('coordinates').value);
+                if (coords) {
+                    updateReadout(coords.lat, coords.lng, true);
+                } else {
+                    document.getElementById('mapReadout').innerHTML =
+                        '📌 Chưa chọn vị trí — click vào bản đồ hoặc kéo pin để chọn tọa độ';
+                }
+            });
+
+            setTimeout(() => mapInstance.invalidateSize(), 200);
+        }
+
+        function placeMarker(lat, lng, updateInput) {
+            if (mapMarker) {
+                mapMarker.setLatLng([lat, lng]);
+            } else {
+                mapMarker = L.marker([lat, lng], { draggable: true }).addTo(mapInstance);
+                mapMarker.on('dragend', () => {
+                    const pos = mapMarker.getLatLng();
+                    log('🖱️ Marker dragged:', pos);
+                    placeMarker(pos.lat, pos.lng, true);
+                });
+            }
+
+            if (updateInput) {
+                document.getElementById('coordinates').value = formatCoordinates(lat, lng);
+            }
+            updateReadout(lat, lng, true);
+        }
+
+        function updateReadout(lat, lng, isSelected) {
+            const el = document.getElementById('mapReadout');
+            const label = isSelected ? '✅ Đã chọn' : '🖱️ Đang trỏ tới';
+            el.innerHTML = `${label}: <b>${lat.toFixed(6)}, ${lng.toFixed(6)}</b>`;
+        }
+
+        function onCoordinatesTyped() {
+            const raw = document.getElementById('coordinates').value;
+            const parsed = parseCoordinates(raw);
+
+            if (!parsed) {
+                log('⚠️ Coordinates typed nhưng không parse được:', raw);
+                return;
+            }
+
+            document.getElementById('coordinates').value = formatCoordinates(parsed.lat, parsed.lng);
+
+            if (mapInstance) {
+                placeMarker(parsed.lat, parsed.lng, false);
+                mapInstance.setView([parsed.lat, parsed.lng], DEFAULT_MAP_ZOOM);
+            }
+        }
+
+        function locateMe() {
+            log('📍 locateMe()');
+            const btn = document.getElementById('locateBtn');
+
+            if (!navigator.geolocation) {
+                showMessage('configError', '❌ Trình duyệt không hỗ trợ định vị GPS');
+                return;
+            }
+
+            btn.classList.add('locating');
+            btn.textContent = '⏳ Đang định vị...';
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    log('✓ Geolocation OK:', position.coords);
+                    const { latitude, longitude } = position.coords;
+                    placeMarker(latitude, longitude, true);
+                    if (mapInstance) {
+                        mapInstance.setView([latitude, longitude], DEFAULT_MAP_ZOOM);
+                    }
+                    btn.classList.remove('locating');
+                    btn.textContent = '📍 Lấy Vị Trí Hiện Tại';
+                    showMessage('configSuccess', '✅ Đã lấy vị trí hiện tại');
+                },
+                (error) => {
+                    log('❌ Geolocation error:', error.message);
+                    btn.classList.remove('locating');
+                    btn.textContent = '📍 Lấy Vị Trí Hiện Tại';
+                    showMessage('configError', '❌ Không thể lấy vị trí: ' + error.message + ' (Kiểm tra quyền truy cập vị trí trong trình duyệt)');
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        function searchOnMap() {
+            const query = prompt('Nhập tên địa điểm cần tìm (ví dụ: UBND phường Trị An, Biên Hòa):');
+            if (!query || !query.trim()) return;
+
+            log('🔍 searchOnMap():', query);
+
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`)
+                .then(res => res.json())
+                .then(results => {
+                    if (!results || results.length === 0) {
+                        showMessage('configError', '❌ Không tìm thấy địa điểm. Thử click trực tiếp trên bản đồ.');
+                        return;
+                    }
+                    const { lat, lon } = results[0];
+                    const latNum = parseFloat(lat);
+                    const lngNum = parseFloat(lon);
+                    placeMarker(latNum, lngNum, true);
+                    if (mapInstance) {
+                        mapInstance.setView([latNum, lngNum], DEFAULT_MAP_ZOOM);
+                    }
+                    log('✓ Search result:', results[0]);
+                })
+                .catch(err => {
+                    log('❌ Search error:', err);
+                    showMessage('configError', '❌ Lỗi tìm kiếm. Vui lòng thử click trực tiếp trên bản đồ.');
+                });
+        }
+
+        // ============ COORDINATES PARSING / VALIDATION ============
+        function parseCoordinates(raw) {
+            if (!raw) return null;
+            const cleaned = raw.trim();
+
+            let parts;
+            if (cleaned.includes(',')) {
+                parts = cleaned.split(',');
+            } else {
+                parts = cleaned.split(/\s+/);
+            }
+
+            if (parts.length !== 2) return null;
+
+            const lat = parseFloat(parts[0].trim());
+            const lng = parseFloat(parts[1].trim());
+
+            if (isNaN(lat) || isNaN(lng)) return null;
+            if (lat < -90 || lat > 90) return null;
+            if (lng < -180 || lng > 180) return null;
+
+            return { lat, lng };
+        }
+
+        function formatCoordinates(lat, lng) {
+            return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+        }
+
+        // ============ SAVE CONFIG ============
+        function saveConfig() {
+            log('💾 saveConfig()');
+
+            const meetingTitle = document.getElementById('meetingTitle').value.trim();
+            const unitName = document.getElementById('unitName').value.trim();
+            const meetingDate = document.getElementById('meetingDate').value.trim();
+            const meetingTime = document.getElementById('meetingTime').value.trim();
+            const location = document.getElementById('location').value.trim();
+            const coordinatesRaw = document.getElementById('coordinates').value.trim();
+
+            if (!meetingTitle || !unitName || !meetingDate || !meetingTime || !location || !coordinatesRaw) {
+                log('❌ Missing required fields');
+                showMessage('configError', '❌ Vui lòng điền đầy đủ thông tin');
+                return;
+            }
+
+            const parsedCoords = parseCoordinates(coordinatesRaw);
+            if (!parsedCoords) {
+                log('❌ Invalid coordinates format:', coordinatesRaw);
+                showMessage('configError', '❌ Tọa độ GPS không hợp lệ. Định dạng: lat,lng (ví dụ: 10.9472,106.8192)');
+                return;
+            }
+            const coordinates = formatCoordinates(parsedCoords.lat, parsedCoords.lng);
+            document.getElementById('coordinates').value = coordinates;
+
+            const meetingID = generateMeetingID();
+            log('✓ Generated Meeting ID:', meetingID);
+            currentMeetingID = meetingID;
+
+            const config = {
+                meetingID, meetingTitle, unitName, meetingDate, meetingTime, location, coordinates
+            };
+
+            localStorage.setItem('meetingConfig', JSON.stringify(config));
+            log('✓ Config saved to localStorage');
+
+            document.getElementById('attendanceList').classList.remove('show');
+            document.getElementById('attendanceTableBody').innerHTML = '';
+
+            // Lưu cấu hình lên server + xin mã ngắn TRƯỚC khi tạo QR (thay cho nhúng
+            // toàn bộ config vào URL) — QR nhờ vậy chỉ cần mã hóa mã ngắn, ít ô hơn
+            // nhiều, dễ quét từ xa (VD chiếu trên màn hình LED cuối hội trường).
+            document.getElementById('qrDisplay').classList.remove('show');
+            showMessage('configSuccess', '⏳ Đang lưu cấu hình lên server...');
+
+            callGAS({
+                action: 'saveMeetingConfig',
+                meetingID: meetingID,
+                config: config
+            })
+            .then(data => {
+                if (data.success && data.shortCode) {
+                    currentShortCode = data.shortCode;
+                    localStorage.setItem('lastShortCode', data.shortCode);
+                    renderQR(meetingID, data.shortCode);
+                    showMessage('configSuccess', '✅ Cấu hình đã lưu thành công!');
+                } else {
+                    showMessage('configError', '❌ Không lưu được cấu hình lên server: ' + (data.message || 'Lỗi không xác định'));
+                }
+            })
+            .catch(error => {
+                log('❌ saveMeetingConfig lỗi:', error.message);
+                showMessage('configError', '❌ Lỗi kết nối khi lưu cấu hình (' + error.message + '). Kiểm tra mạng và bấm "Lưu Cấu Hình & Tạo QR" lại.');
+            });
+
+            document.getElementById('attendanceMeetingManual').value = meetingID;
+        }
+
+        // ============ GENERATE MEETING ID ============
+        function generateMeetingID() {
+            const now = new Date();
+            const dateStr = now.getFullYear() +
+                           String(now.getMonth() + 1).padStart(2, '0') +
+                           String(now.getDate()).padStart(2, '0');
+            const timeStr = String(now.getHours()).padStart(2, '0') +
+                           String(now.getMinutes()).padStart(2, '0') +
+                           String(now.getSeconds()).padStart(2, '0');
+            const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+            return `DIEMDANH-${dateStr}-${timeStr}-${random}`;
+        }
+
+        // ============ RENDER QR (dùng mã ngắn thay vì nhúng config base64) ============
+        // QUAN TRỌNG: URL QR giờ CHỈ chứa mã ngắn (VD ?c=A3F9K2) — không còn
+        // nhúng toàn bộ config (base64) như trước. Nhờ vậy QR ít ô vuông hơn
+        // NHIỀU (URL ngắn hơn hẳn), dễ quét từ xa hơn khi chiếu lên màn hình
+        // LED. checkin.html (chế độ mặc định của file này) sẽ gọi Apps Script
+        // để tra lại cấu hình đầy đủ từ mã ngắn này.
+        function renderQR(meetingID, shortCode) {
+            log('📱 renderQR():', meetingID, shortCode);
+
+            // Tự suy ra URL trang hiện tại (bỏ query string cũ) để làm gốc cho link QR —
+            // không hardcode domain, nên hoạt động đúng dù host ở đâu (GitHub Pages, domain riêng...).
+            const baseUrl = window.location.origin + window.location.pathname;
+            const checkInUrl = `${baseUrl}?c=${shortCode}`;
+            log('✓ Check-in URL:', checkInUrl);
+
+            // Mức sửa lỗi thấp nhất (ecc=L) + URL ngắn (chỉ ~6 ký tự mã) giúp QR có
+            // ít ô nhất có thể — ưu tiên "dễ quét xa" hơn "chịu được QR bị che/rách",
+            // phù hợp bối cảnh chiếu QR tĩnh lên màn hình, không bị dán/che.
+            const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&ecc=L&data=${encodeURIComponent(checkInUrl)}`;
+            log('✓ QR API URL:', qrApiUrl);
+
+            document.getElementById('qrImage').src = qrApiUrl;
+            document.getElementById('qrShortCode').textContent = shortCode;
+            document.getElementById('qrUrl').textContent = checkInUrl;
+            document.getElementById('qrUrlLabel').textContent = 'Mã cuộc họp (để nhập tay nếu cần):';
+            document.getElementById('qrDisplay').classList.add('show');
+
+            localStorage.setItem('lastQRUrl', checkInUrl);
+
+            document.getElementById('shortlinkBox').style.display = 'none';
+            document.getElementById('shortenError').classList.remove('show');
+            lastShortUrl = null;
+            originalLongUrl = checkInUrl;
+        }
+
+        // ============ DOWNLOAD QR ============
+        function downloadQR() {
+            log('⬇️ downloadQR()');
+            const img = document.getElementById('qrImage');
+            const link = document.createElement('a');
+            link.href = img.src;
+            link.download = `QR-${new Date().getTime()}.png`;
+            link.click();
+        }
+
+        // ============ COPY QR URL ============
+        function copyQRUrl() {
+            log('📋 copyQRUrl()');
+            const qrUrl = document.getElementById('qrUrl').textContent;
+            navigator.clipboard.writeText(qrUrl).then(() => {
+                showMessage('configSuccess', '✅ Đã copy URL vào clipboard');
+            }).catch(err => {
+                log('❌ Copy error:', err);
+                showMessage('configError', '❌ Không thể copy. Vui lòng copy thủ công.');
+            });
+        }
+
+        // ============ RÚT GỌN LINK ============
+        let lastShortUrl = null;
+        let originalLongUrl = null;
+
+        function shortenLink(forceRegenerate) {
+            log('🔗 shortenLink()', { forceRegenerate });
+
+            const longUrl = (originalLongUrl || document.getElementById('qrUrl').textContent).trim();
+            if (!longUrl) {
+                document.getElementById('shortenError').textContent = '❌ Chưa có link cuộc họp để rút gọn. Hãy tạo QR trước.';
+                document.getElementById('shortenError').classList.add('show');
+                return;
+            }
+            if (!originalLongUrl) originalLongUrl = longUrl;
+
+            document.getElementById('shortenError').classList.remove('show');
+            const btn = document.getElementById('shortenBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '⏳ Đang rút gọn...';
+
+            callGAS({
+                action: 'shortenLink',
+                longUrl: longUrl,
+                meetingID: currentMeetingID || ''
+            })
+            .then(data => {
+                log('✓ shortenLink response:', data);
+                btn.disabled = false;
+                btn.textContent = originalText;
+
+                if (data.success && data.shortUrl) {
+                    lastShortUrl = data.shortUrl;
+                    document.getElementById('shortUrlDisplay').textContent = data.shortUrl;
+                    document.getElementById('shortlinkBox').style.display = 'block';
+                    showMessage('configSuccess', '✅ Đã rút gọn link thành công!');
+                } else {
+                    log('❌ shortenLink server báo lỗi:', data.message);
+                    document.getElementById('shortenError').textContent =
+                        '❌ Không rút gọn được link: ' + (data.message || 'Lỗi không xác định') +
+                        '. Link đầy đủ vẫn dùng được bình thường, anh có thể Copy URL để gửi tạm.';
+                    document.getElementById('shortenError').classList.add('show');
+                }
+            })
+            .catch(error => {
+                log('❌ shortenLink error:', error.message);
+                btn.disabled = false;
+                btn.textContent = originalText;
+                document.getElementById('shortenError').textContent =
+                    '❌ Lỗi kết nối khi rút gọn link (' + error.message + '). Kiểm tra mạng và thử lại. Link đầy đủ vẫn dùng được bình thường.';
+                document.getElementById('shortenError').classList.add('show');
+            });
+        }
+
+        function copyShortUrl() {
+            log('📋 copyShortUrl()');
+            const shortUrl = document.getElementById('shortUrlDisplay').textContent.trim();
+            if (!shortUrl) return;
+
+            navigator.clipboard.writeText(shortUrl).then(() => {
+                showMessage('configSuccess', '✅ Đã copy link rút gọn vào clipboard');
+            }).catch(err => {
+                log('❌ Copy error:', err);
+                showMessage('configError', '❌ Không thể copy. Vui lòng copy thủ công.');
+            });
+        }
+
+        // ============ DANH SÁCH ĐIỂM DANH ============
+        let lastAttendanceList = []; // cache lại để Xuất Excel không cần gọi lại server
+
+        function toggleAttendanceList() {
+            log('📋 toggleAttendanceList()');
+            const panel = document.getElementById('attendanceList');
+            const willShow = !panel.classList.contains('show');
+            panel.classList.toggle('show');
+            if (willShow) {
+                loadMeetingsList();
+                loadAttendanceList();
+            }
+        }
+
+        function loadMeetingsList() {
+            log('📋 loadMeetingsList()');
+            const select = document.getElementById('attendanceMeetingSelect');
+
+            callGAS({ action: 'listMeetings' })
+            .then(data => {
+                log('✓ listMeetings response:', data);
+                if (!data.success || !Array.isArray(data.meetings)) {
+                    select.innerHTML = '<option value="">-- Không tải được danh sách cuộc họp --</option>';
+                    return;
+                }
+
+                if (data.meetings.length === 0) {
+                    select.innerHTML = '<option value="">-- Chưa có cuộc họp nào có dữ liệu --</option>';
+                    return;
+                }
+
+                select.innerHTML = data.meetings.map(m =>
+                    `<option value="${m.meetingID}">${m.meetingID} (${m.count} người)</option>`
+                ).join('');
+
+                if (currentMeetingID && data.meetings.some(m => m.meetingID === currentMeetingID)) {
+                    select.value = currentMeetingID;
+                } else if (data.meetings.length > 0) {
+                    select.value = data.meetings[0].meetingID;
+                    currentMeetingID = data.meetings[0].meetingID;
+                }
+            })
+            .catch(error => {
+                log('❌ loadMeetingsList error:', error.message);
+                select.innerHTML = `<option value="">-- Lỗi: ${error.message.substring(0, 60)} --</option>`;
+            });
+        }
+
+        function onAttendanceMeetingChange() {
+            const select = document.getElementById('attendanceMeetingSelect');
+            if (!select.value) return;
+            log('📋 onAttendanceMeetingChange():', select.value);
+            currentMeetingID = select.value;
+            document.getElementById('attendanceMeetingManual').value = select.value;
+            loadAttendanceList(select.value);
+        }
+
+        function loadAttendanceListManual() {
+            const manual = document.getElementById('attendanceMeetingManual').value.trim();
+            if (!manual) {
+                document.getElementById('attendanceError').textContent = '❌ Vui lòng nhập Meeting ID.';
+                document.getElementById('attendanceError').classList.add('show');
+                return;
+            }
+            log('📋 loadAttendanceListManual():', manual);
+            currentMeetingID = manual;
+            document.getElementById('attendanceMeetingSelect').value = manual;
+            loadAttendanceList(manual);
+        }
+
+        function loadAttendanceList(meetingIDOverride) {
+            const meetingID = meetingIDOverride || currentMeetingID;
+            log('📋 loadAttendanceList() - Meeting:', meetingID);
+
+            if (!meetingID) {
+                document.getElementById('attendanceError').textContent = '❌ Chưa có cuộc họp nào được chọn. Hãy tạo QR hoặc chọn/nhập Meeting ID ở trên.';
+                document.getElementById('attendanceError').classList.add('show');
+                return;
+            }
+
+            document.getElementById('attendanceError').classList.remove('show');
+            document.getElementById('attendanceLoading').style.display = 'block';
+            document.getElementById('attendanceTableBody').innerHTML = '';
+            document.getElementById('attendanceCount').textContent = '';
+
+            callGAS({
+                action: 'getAttendanceList',
+                meetingID: meetingID
+            })
+            .then(data => {
+                log('✓ Attendance list response:', data);
+                document.getElementById('attendanceLoading').style.display = 'none';
+
+                if (!data.success) {
+                    document.getElementById('attendanceError').textContent = '❌ ' + (data.message || 'Lỗi khi tải danh sách');
+                    document.getElementById('attendanceError').classList.add('show');
+                    return;
+                }
+
+                renderAttendanceList(data.list || []);
+            })
+            .catch(error => {
+                log('❌ loadAttendanceList error:', error.message);
+                document.getElementById('attendanceLoading').style.display = 'none';
+                document.getElementById('attendanceError').textContent = '❌ ' + error.message;
+                document.getElementById('attendanceError').classList.add('show');
+            });
+        }
+
+        function renderAttendanceList(list) {
+            lastAttendanceList = list;
+            const tbody = document.getElementById('attendanceTableBody');
+            const countEl = document.getElementById('attendanceCount');
+
+            if (!list.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="attendance-empty">Chưa có ai điểm danh cho cuộc họp này</td></tr>';
+                countEl.textContent = '0 người';
+                return;
+            }
+
+            countEl.textContent = list.length + ' người';
+            tbody.innerHTML = list.map(person => `
+                <tr>
+                    <td>${person.stt}</td>
+                    <td>${escapeHtml(person.fullName)}</td>
+                    <td>${escapeHtml(person.position || '-')}</td>
+                    <td>${escapeHtml(person.department || '-')}</td>
+                    <td>${escapeHtml(person.time || '-')}</td>
+                    <td>${person.soLan || 1}</td>
+                </tr>
+            `).join('');
+        }
+
+        // ============ XUẤT EXCEL DANH SÁCH ĐIỂM DANH (MỚI) ============
+        // Xuất trực tiếp từ dữ liệu đã tải (lastAttendanceList) — không cần
+        // gọi lại server. Dùng thư viện SheetJS (nhúng ở đầu file) để tạo
+        // file .xlsx thật, mở được bằng Excel/Google Sheets.
+        function exportAttendanceExcel() {
+            log('📊 exportAttendanceExcel()');
+
+            if (!lastAttendanceList || lastAttendanceList.length === 0) {
+                showMessage('configError', '❌ Chưa có dữ liệu điểm danh để xuất. Hãy chọn đúng cuộc họp và bấm "Làm Mới" trước.');
+                return;
+            }
+
+            const meetingID = currentMeetingID || 'cuoc-hop';
+
+            const rows = lastAttendanceList.map(p => ({
+                'STT': p.stt,
+                'Họ Tên': p.fullName,
+                'Chức Vụ': p.position || '',
+                'Đơn Vị': p.department || '',
+                'Giờ Điểm Danh': p.time || '',
+                'Ngày': p.date || '',
+                'Số Lần Sửa': p.soLan || 1
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(rows);
+            worksheet['!cols'] = [
+                { wch: 6 }, { wch: 26 }, { wch: 26 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 10 }
+            ];
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Danh sách điểm danh');
+
+            const fileName = `DiemDanh-${meetingID}.xlsx`;
+            XLSX.writeFile(workbook, fileName);
+            log('✓ Đã xuất file:', fileName);
+        }
+
+        // ============ LOGOUT ============
+        function logout() {
+            log('🚪 logout()');
+            document.getElementById('adminPassword').value = '';
+            showSection('loginSection');
+        }
+
+        // ============ KEYBOARD ============
+        document.addEventListener('keypress', (e) => {
+            if (!IS_ADMIN_MODE) return;
+            if (e.key === 'Enter' && document.getElementById('loginSection').classList.contains('active')) {
+                checkPassword();
+            }
+        });
+    </script>
+
+    <!-- ================= LOGIC TRANG ĐIỂM DANH (checkin) ================= -->
+    <script>
+        // ============ STATE ============
+        let currentMeetingConfig = null;
+        let checkInData = null;
+        let isEditMode = false;
+        let isAdminOverrideMode = false;
+        let positionSuggestionsCache = [];
+        let positionActiveIndex = -1;
+        let departmentSuggestionsCache = [];
+        let departmentActiveIndex = -1;
+
+        // ============ DEVICE TOKEN ============
+        function getDeviceToken() {
+            let token = localStorage.getItem('deviceToken');
+            if (!token) {
+                token = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 12);
+                localStorage.setItem('deviceToken', token);
+                log('🆔 Tạo device token mới:', token);
+            }
+            return token;
+        }
+
+        // ============ GHI NHỚ THÔNG TIN THEO THIẾT BỊ ============
+        function rememberCheckInInfo(fullName, position, department) {
+            if (!fullName) return;
+            localStorage.setItem('rememberedFullName', fullName);
+            localStorage.setItem('rememberedPosition', position || '');
+            localStorage.setItem('rememberedDepartment', department || '');
+        }
+
+        function getRememberedCheckInInfo() {
+            return {
+                fullName: localStorage.getItem('rememberedFullName') || '',
+                position: localStorage.getItem('rememberedPosition') || '',
+                department: localStorage.getItem('rememberedDepartment') || ''
+            };
+        }
+
+        // ============ GỢI Ý CHỨC VỤ ============
+        function loadPositionSuggestions() {
+            return callGASJsonp({ action: 'getPositionSuggestions' })
+            .then(data => {
+                if (data.success && Array.isArray(data.positions)) {
+                    positionSuggestionsCache = data.positions;
+                    log('✓ Đã tải ' + positionSuggestionsCache.length + ' gợi ý chức vụ', positionSuggestionsCache);
+                } else {
+                    log('⚠️ Server trả về nhưng không có positions:', data);
+                }
+            })
+            .catch(error => {
+                log('⚠️ Không tải được gợi ý chức vụ:', error.message);
+            });
+        }
+
+        function onPositionInput() {
+            const input = document.getElementById('position');
+            const query = input.value.trim();
+            const box = document.getElementById('positionSuggestions');
+            positionActiveIndex = -1;
+
+            if (!query || positionSuggestionsCache.length === 0) {
+                box.classList.remove('show');
+                box.innerHTML = '';
+                return;
+            }
+
+            const queryNorm = stripDiacritics(query);
+            const matches = positionSuggestionsCache
+                .filter(pos => stripDiacritics(pos).includes(queryNorm))
+                .slice(0, 8);
+
+            if (matches.length === 0) {
+                box.classList.remove('show');
+                box.innerHTML = '';
+                return;
+            }
+
+            box.innerHTML = matches.map((pos, idx) => {
+                const posNorm = stripDiacritics(pos);
+                const matchStart = posNorm.indexOf(queryNorm);
+                let highlighted = pos;
+                if (matchStart !== -1) {
+                    const before = pos.substring(0, matchStart);
+                    const matched = pos.substring(matchStart, matchStart + query.length);
+                    const after = pos.substring(matchStart + query.length);
+                    highlighted = `${before}<span class="matched">${matched}</span>${after}`;
+                }
+                return `<div class="position-suggestion-item" data-index="${idx}" onmousedown="selectPositionSuggestion('${pos.replace(/'/g, "\\'")}')">${highlighted}</div>`;
+            }).join('');
+
+            box.classList.add('show');
+        }
+
+        function selectPositionSuggestion(pos) {
+            document.getElementById('position').value = pos;
+            const box = document.getElementById('positionSuggestions');
+            box.classList.remove('show');
+            box.innerHTML = '';
+        }
+
+        function hidePositionSuggestionsDelayed() {
+            setTimeout(() => {
+                document.getElementById('positionSuggestions').classList.remove('show');
+            }, 150);
+        }
+
+        function updatePositionActiveItem(items) {
+            items.forEach((item, idx) => {
+                item.classList.toggle('active', idx === positionActiveIndex);
+            });
+        }
+
+        // ============ GỢI Ý ĐƠN VỊ ============
+        // Giờ server trả về LUÔN danh sách cố định 112 đơn vị (không tự học nữa —
+        // xem giải thích ở Ma.gs), nhưng người dùng vẫn gõ tự do được: nếu gõ tên
+        // không có trong danh sách, ô input vẫn giữ nguyên giá trị gõ tay bình
+        // thường (dropdown gợi ý chỉ ẩn đi, không chặn nhập).
+        function loadDepartmentSuggestions() {
+            return callGASJsonp({ action: 'getDepartmentSuggestions' })
+            .then(data => {
+                if (data.success && Array.isArray(data.positions)) {
+                    departmentSuggestionsCache = data.positions;
+                    log('✓ Đã tải ' + departmentSuggestionsCache.length + ' đơn vị', departmentSuggestionsCache);
+                } else {
+                    log('⚠️ Server trả về nhưng không có positions (department):', data);
+                }
+            })
+            .catch(error => {
+                log('⚠️ Không tải được danh sách đơn vị:', error.message);
+            });
+        }
+
+        function onDepartmentInput() {
+            const input = document.getElementById('department');
+            const query = input.value.trim();
+            const box = document.getElementById('departmentSuggestions');
+            departmentActiveIndex = -1;
+
+            if (!query || departmentSuggestionsCache.length === 0) {
+                box.classList.remove('show');
+                box.innerHTML = '';
+                return;
+            }
+
+            const queryNorm = stripDiacritics(query);
+            const matches = departmentSuggestionsCache
+                .filter(dep => stripDiacritics(dep).includes(queryNorm))
+                .slice(0, 8);
+
+            if (matches.length === 0) {
+                box.classList.remove('show');
+                box.innerHTML = '';
+                return;
+            }
+
+            box.innerHTML = matches.map((dep, idx) => {
+                const depNorm = stripDiacritics(dep);
+                const matchStart = depNorm.indexOf(queryNorm);
+                let highlighted = dep;
+                if (matchStart !== -1) {
+                    const before = dep.substring(0, matchStart);
+                    const matched = dep.substring(matchStart, matchStart + query.length);
+                    const after = dep.substring(matchStart + query.length);
+                    highlighted = `${before}<span class="matched">${matched}</span>${after}`;
+                }
+                return `<div class="position-suggestion-item" data-index="${idx}" onmousedown="selectDepartmentSuggestion('${dep.replace(/'/g, "\\'")}')">${highlighted}</div>`;
+            }).join('');
+
+            box.classList.add('show');
+        }
+
+        function selectDepartmentSuggestion(dep) {
+            document.getElementById('department').value = dep;
+            const box = document.getElementById('departmentSuggestions');
+            box.classList.remove('show');
+            box.innerHTML = '';
+        }
+
+        function hideDepartmentSuggestionsDelayed() {
+            setTimeout(() => {
+                document.getElementById('departmentSuggestions').classList.remove('show');
+            }, 150);
+        }
+
+        function updateDepartmentActiveItem(items) {
+            items.forEach((item, idx) => {
+                item.classList.toggle('active', idx === departmentActiveIndex);
+            });
+        }
+
+        // ============ LOAD CONFIG TỪ MÃ NGẮN (thay cho decode base64 từ URL) ============
+        // URL giờ chỉ có dạng ?c=A3F9K2 — trang gọi Apps Script (qua JSONP, vì đây
+        // là lệnh tự động chạy ngay lúc trang mở) để tra lại cấu hình đầy đủ.
+        function loadMeetingConfig() {
+            log('📥 loadMeetingConfig() - Bắt đầu');
+
+            const params = new URLSearchParams(window.location.search);
+            const shortCode = params.get('c');
+
+            if (!shortCode) {
+                // Không có mã trong URL — fallback: dùng config đã lưu trên MÁY NÀY
+                // từ lần trước (VD admin test lại trên chính máy đã cấu hình).
+                const saved = localStorage.getItem('meetingConfig');
+                if (saved) {
+                    try {
+                        currentMeetingConfig = JSON.parse(saved);
+                        log('✓ Config loaded from localStorage:', currentMeetingConfig);
+                        document.getElementById('headerSubtitle').textContent = currentMeetingConfig.meetingTitle || currentMeetingConfig.unitName;
+                        return Promise.resolve();
+                    } catch (e) {
+                        log('❌ Error parsing config:', e);
+                    }
+                }
+                log('⚠️ Không có mã cuộc họp trong URL và không có config cũ');
+                return Promise.resolve();
+            }
+
+            return callGASJsonp({ action: 'resolveMeetingCode', code: shortCode })
+                .then(data => {
+                    if (data.success && data.config) {
+                        currentMeetingConfig = data.config;
+                        currentMeetingConfig.meetingID = data.meetingID;
+                        log('✓ Config resolved từ mã ngắn:', currentMeetingConfig);
+                        document.getElementById('headerSubtitle').textContent = currentMeetingConfig.meetingTitle || currentMeetingConfig.unitName;
+                        localStorage.setItem('meetingConfig', JSON.stringify(currentMeetingConfig));
+                    } else {
+                        log('❌ Không tra được cấu hình từ mã:', data.message);
+                        showMessage('qrError', '❌ ' + (data.message || 'Không tìm thấy cuộc họp ứng với mã này.'));
+                    }
+                })
+                .catch(error => {
+                    log('❌ resolveMeetingCode lỗi:', error.message);
+                    showMessage('qrError', '❌ Không tra được cấu hình cuộc họp (' + error.message + '). Kiểm tra mạng và thử lại.');
+                });
+        }
+
+        // ============ PROCESS QR / MÃ NHẬP TAY ============
+        function processQR() {
+            log('🔄 processQR() - Input value:', document.getElementById('qrInput').value);
+
+            const codeInput = document.getElementById('qrInput').value.trim().toUpperCase();
+
+            if (!codeInput) {
+                log('❌ Input rỗng');
+                showMessage('qrError', '❌ Vui lòng nhập mã cuộc họp');
+                return;
+            }
+
+            if (currentMeetingConfig && currentMeetingConfig.meetingID) {
+                log('✓ Đã có config sẵn, dùng luôn');
+                validateGPS(currentMeetingConfig.meetingID);
+                return;
+            }
+
+            // Nhập tay mã cuộc họp (không qua URL) -> tra cứu luôn từ mã vừa gõ
+            showSection('loadingSection');
+            callGASJsonp({ action: 'resolveMeetingCode', code: codeInput })
+                .then(data => {
+                    if (data.success && data.config) {
+                        currentMeetingConfig = data.config;
+                        currentMeetingConfig.meetingID = data.meetingID;
+                        document.getElementById('headerSubtitle').textContent = currentMeetingConfig.meetingTitle || currentMeetingConfig.unitName;
+                        validateGPS(data.meetingID);
+                    } else {
+                        showSection('qrSection');
+                        showMessage('qrError', '❌ ' + (data.message || 'Không tìm thấy cuộc họp ứng với mã này.'));
+                    }
+                })
+                .catch(error => {
+                    showSection('qrSection');
+                    showMessage('qrError', '❌ Không tra được mã cuộc họp (' + error.message + ').');
+                });
+        }
+
+        // ============ VALIDATE GPS ============
+        let lastMeetingIDForGPSRetry = null;
+
+        function validateGPS(meetingID) {
+            log('📍 validateGPS() - Meeting:', meetingID);
+            lastMeetingIDForGPSRetry = meetingID;
+            showSection('loadingSection');
+
+            if (!navigator.geolocation) {
+                log('❌ Thiết bị không hỗ trợ GPS - CHẶN điểm danh');
+                showGPSRequired('❌ Trình duyệt/thiết bị này không hỗ trợ định vị GPS. Vui lòng dùng điện thoại khác hoặc liên hệ admin để được điểm danh thay.');
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    log('✓ GPS OK:', position.coords);
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+
+                    const coords = currentMeetingConfig.coordinates.split(',');
+                    const venueLat = parseFloat(coords[0].trim());
+                    const venueLng = parseFloat(coords[1].trim());
+
+                    log(`✓ User location: ${userLat}, ${userLng}`);
+                    log(`✓ Venue location: ${venueLat}, ${venueLng}`);
+
+                    const distance = calculateDistance(userLat, userLng, venueLat, venueLng);
+                    const allowedRadius = APP_CONFIG.gpsRadius;
+                    log(`✓ Distance: ${Math.round(distance)}m (allowed: ${allowedRadius}m)`);
+
+                    if (distance <= allowedRadius) {
+                        log('✓ GPS validate SUCCESS');
+                        checkIfAlreadyCheckedIn(meetingID);
+                    } else {
+                        log('❌ GPS validate FAILED - quá xa');
+                        showMessage('qrError',
+                            `❌ Bạn ở cách hội trường ${Math.round(distance)}m. Phạm vi cho phép: ${allowedRadius}m`);
+                        showSection('qrSection');
+                    }
+                },
+                (error) => {
+                    log('❌ GPS error - CHẶN điểm danh:', error.message);
+                    let reason = '❌ Không thể lấy được vị trí GPS của bạn.';
+                    if (error.code === 1) {
+                        reason = '❌ Bạn đã từ chối quyền truy cập vị trí. Vui lòng vào cài đặt trình duyệt, cấp lại quyền vị trí cho trang này, rồi bấm "Thử Lại".';
+                    } else if (error.code === 2) {
+                        reason = '❌ Không xác định được vị trí (GPS có thể đang tắt). Vui lòng bật GPS/dịch vụ định vị trên thiết bị rồi bấm "Thử Lại".';
+                    } else if (error.code === 3) {
+                        reason = '❌ Lấy vị trí quá thời gian chờ. Vui lòng kiểm tra GPS đã bật, đứng ở nơi thoáng hơn rồi bấm "Thử Lại".';
+                    }
+                    showGPSRequired(reason);
+                }
+            );
+        }
+
+        function showGPSRequired(reason) {
+            document.getElementById('gpsRequiredError').textContent = reason;
+            showSection('gpsRequiredSection');
+        }
+
+        function retryGPS() {
+            log('🔄 retryGPS() - Người dùng bấm Thử Lại');
+            if (!lastMeetingIDForGPSRetry) {
+                showSection('qrSection');
+                return;
+            }
+            validateGPS(lastMeetingIDForGPSRetry);
+        }
+
+        // ============ NÚT BÁNH RĂNG ⚙️ - MỞ TRANG ADMIN CẤU HÌNH ============
+        // Khác với openAdminOverride() (dùng để "điểm danh thay" ngay trên
+        // trang điểm danh), nút này nhập mật khẩu rồi CHUYỂN HẲN sang trang
+        // Admin (?mode=admin) để cấu hình hệ thống.
+        function openSettingsGear() {
+            log('⚙️ openSettingsGear() - mở form nhập mật khẩu admin');
+            document.getElementById('settingsGearPassword').value = '';
+            document.getElementById('settingsGearError').classList.remove('show');
+            showSection('settingsGearSection');
+            setTimeout(() => document.getElementById('settingsGearPassword').focus(), 100);
+        }
+
+        function submitSettingsGearPassword() {
+            log('⚙️ submitSettingsGearPassword()');
+            const entered = document.getElementById('settingsGearPassword').value;
+
+            if (entered !== APP_CONFIG.adminPassword) {
+                log('❌ Sai mật khẩu admin (nút bánh răng)');
+                showMessage('settingsGearError', '❌ Mật khẩu không đúng. Vui lòng thử lại.');
+                document.getElementById('settingsGearPassword').value = '';
+                return;
+            }
+
+            log('✓ Mật khẩu đúng - hiện menu Cài Đặt');
+            document.getElementById('settingsGearPassword').value = '';
+            showSection('settingsMenuSection');
+        }
+
+        // Lựa chọn "Vào trang Admin" trong menu Cài Đặt: chuyển hẳn sang
+        // ?mode=admin (mật khẩu đã được xác thực ở bước trước).
+        function goToAdminPanel() {
+            log('🗂️ goToAdminPanel() - chuyển sang trang Admin');
+            const url = new URL(window.location.href);
+            url.searchParams.set('mode', 'admin');
+            window.location.href = url.toString();
+        }
+
+        function cancelSettingsGear() {
+            log('↩️ cancelSettingsGear()');
+            document.getElementById('settingsGearPassword').value = '';
+            showSection('qrSection');
+        }
+
+
+        // ============ ADMIN OVERRIDE (điểm danh thay) ============
+        // Mật khẩu đã được xác thực ở bước Cài đặt (⚙️ -> settingsGearSection)
+        // trước khi vào tới menu này, nên ở đây không hỏi lại mật khẩu nữa.
+        function openAdminOverride() {
+            log('🔑 openAdminOverride() - Admin bấm điểm danh thay');
+
+            if (!currentMeetingConfig) {
+                showSection('qrSection');
+                showMessage('qrError', '⚠️ Chưa có cuộc họp nào được tải. Vui lòng quét đúng mã QR hoặc nhập mã trước.');
+                return;
+            }
+
+            log('✓ Vào chế độ điểm danh thay');
+            isAdminOverrideMode = true;
+            isEditMode = false;
+            checkInData = { meetingID: currentMeetingConfig.meetingID, timestamp: new Date().toISOString() };
+
+            document.getElementById('fullName').value = '';
+            document.getElementById('position').value = '';
+            document.getElementById('department').value = '';
+            document.getElementById('editNotice').style.display = 'none';
+            hideOldDataBox();
+            document.getElementById('adminOverrideNotice').style.display = 'block';
+
+            displayMeetingInfo();
+            showSection('formSection');
+            setTimeout(() => document.getElementById('fullName').focus(), 100);
+        }
+
+
+        // ============ CALCULATE DISTANCE ============
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // ============ CHECK ALREADY CHECKED IN ============
+        function checkIfAlreadyCheckedIn(meetingID) {
+            log('🔍 checkIfAlreadyCheckedIn() - Checking duplicate...');
+
+            callGAS({
+                action: 'checkAttendance',
+                meetingID: meetingID,
+                deviceToken: getDeviceToken()
+            })
+            .then(data => {
+                log('✓ GAS response:', data);
+                if (data.alreadyCheckedIn) {
+                    log('🚫 Thiết bị này đã điểm danh trước đó, chặn quét lần 2');
+                    checkInData = data.data;
+                    isEditMode = true;
+                    showAlreadyCheckedInMessage(data.data, meetingID);
+                } else {
+                    log('✓ Chưa điểm danh, hiển thị form mới');
+                    isEditMode = false;
+                    checkInData = null;
+                    showCheckInForm(meetingID);
+                }
+            })
+            .catch(error => {
+                log('⚠️ GAS fetch error:', error.message);
+                isEditMode = false;
+                showCheckInForm(meetingID);
+            });
+        }
+
+        function showAlreadyCheckedInMessage(existingData, meetingID) {
+            log('📛 showAlreadyCheckedInMessage() - Hiển thị cảnh báo quét lần 2');
+
+            document.getElementById('checkedInName').textContent = existingData.fullName || 'N/A';
+            document.getElementById('checkedInPosition').textContent = existingData.position || 'N/A';
+            document.getElementById('checkedInDepartment').textContent = existingData.department || 'N/A';
+            document.getElementById('checkedInTime').textContent = existingData.timestamp || '';
+
+            showSection('alreadyCheckedInSection');
+        }
+
+        function editFromCheckedIn() {
+            log('✏️ editFromCheckedIn() - Cho phép sửa lại thông tin từ cảnh báo');
+            editFromSuccess();
+        }
+
+        function editFromSuccess() {
+            log('✏️ editFromSuccess() - Cho phép sửa lại thông tin');
+            isEditMode = true;
+
+            document.getElementById('fullName').value = checkInData.fullName || '';
+            document.getElementById('position').value = checkInData.position || '';
+            document.getElementById('department').value = checkInData.department || '';
+
+            showOldDataBox(checkInData.fullName, checkInData.position, checkInData.department);
+
+            document.getElementById('editNotice').style.display = 'block';
+            document.getElementById('editNotice').innerHTML =
+                `⚠️ Bạn đang sửa lại thông tin. Cập nhật sẽ ghi đè dữ liệu cũ của <strong>${checkInData.fullName}</strong>.`;
+
+            displayMeetingInfo();
+            showSection('formSection');
+
+            setTimeout(() => {
+                document.getElementById('fullName').focus();
+            }, 100);
+        }
+
+        function showOldDataBox(fullName, position, department) {
+            document.getElementById('oldDataName').textContent = fullName || 'N/A';
+            document.getElementById('oldDataPosition').textContent = position || 'N/A';
+            document.getElementById('oldDataDepartment').textContent = department || 'N/A';
+            document.getElementById('oldDataBox').style.display = 'block';
+        }
+
+        function hideOldDataBox() {
+            document.getElementById('oldDataBox').style.display = 'none';
+        }
+
+        function showCheckInForm(meetingID) {
+            log('📝 showCheckInForm() - Displaying form');
+            checkInData = { meetingID, timestamp: new Date().toISOString() };
+            document.getElementById('editNotice').style.display = 'none';
+            hideOldDataBox();
+
+            const remembered = getRememberedCheckInInfo();
+            if (remembered.fullName) {
+                document.getElementById('fullName').value = remembered.fullName;
+                document.getElementById('position').value = remembered.position;
+                document.getElementById('department').value = remembered.department;
+                log('✓ Tự điền thông tin đã ghi nhớ:', remembered);
+            }
+
+            displayMeetingInfo();
+            showSection('formSection');
+            setTimeout(() => {
+                document.getElementById('fullName').focus();
+            }, 100);
+        }
+
+        function displayMeetingInfo() {
+            const date = new Date(currentMeetingConfig.meetingDate).toLocaleDateString('vi-VN');
+            const html = `
+                <strong>📅 ${date} - ${currentMeetingConfig.meetingTime}</strong><br>
+                ${currentMeetingConfig.meetingTitle}<br>
+                📍 ${currentMeetingConfig.location}
+            `;
+            document.getElementById('meetingInfo').innerHTML = html;
+        }
+
+        // ============ SUBMIT FORM ============
+        function submitForm() {
+            log('📤 submitForm() - Submitting data');
+
+            const fullName = document.getElementById('fullName').value.trim();
+            const position = document.getElementById('position').value.trim();
+            const department = document.getElementById('department').value.trim();
+
+            if (!fullName) {
+                log('❌ Name empty');
+                showMessage('formError', '❌ Vui lòng nhập họ tên');
+                return;
+            }
+
+            log('✓ Form validation OK, submitting...');
+            rememberCheckInInfo(fullName, position, department);
+            showSection('loadingSection');
+
+            const payload = {
+                action: 'submitAttendance',
+                meetingID: checkInData.meetingID,
+                fullName: fullName,
+                position: position,
+                department: department,
+                timestamp: new Date().toLocaleString('vi-VN'),
+                isEdit: isEditMode,
+                deviceToken: isAdminOverrideMode ? ('ADMIN-OVERRIDE-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8)) : getDeviceToken(),
+                isAdminOverride: isAdminOverrideMode
+            };
+
+            log('📨 Payload:', payload);
+
+            callGAS(payload)
+            .then(data => {
+                log('✓ GAS submit response:', data);
+                if (data.success === false && data.blockedDeviceReuse) {
+                    log('🚫 Bị chặn: điểm danh hộ trên cùng thiết bị');
+                    showSection('formSection');
+                    showMessage('formError',
+                        `❌ Thiết bị này đã điểm danh cho "${data.existingName}". Không thể điểm danh hộ người khác trên cùng thiết bị. Mỗi người vui lòng dùng điện thoại của chính mình.`);
+                    return;
+                }
+                showSuccessSection(fullName, position, department);
+            })
+            .catch(error => {
+                log('⚠️ GAS submit error:', error.message);
+                showSection('formSection');
+                showMessage('formError',
+                    '❌ Không thể lưu điểm danh do lỗi kết nối (' + error.message + '). ' +
+                    'Dữ liệu CHƯA được lưu. Vui lòng kiểm tra mạng và bấm "Gửi Thông Tin Điểm Danh" lại.');
+            });
+        }
+
+        // ============ SHOW SUCCESS ============
+        function showSuccessSection(name, position, department) {
+            log('🎉 showSuccessSection()');
+
+            if (isAdminOverrideMode) {
+                log('🔑 Admin override: quay lại form để nhập người tiếp theo');
+                document.getElementById('fullName').value = '';
+                document.getElementById('position').value = '';
+                document.getElementById('department').value = '';
+                showSection('formSection');
+                document.getElementById('formError').classList.remove('show');
+                document.getElementById('adminOverrideNotice').textContent =
+                    `✅ Đã lưu điểm danh cho "${name}". Tiếp tục nhập người kế tiếp, hoặc bấm "Quay Lại" để kết thúc.`;
+                document.getElementById('adminOverrideNotice').style.display = 'block';
+                setTimeout(() => document.getElementById('fullName').focus(), 100);
+                return;
+            }
+
+            document.getElementById('successName').textContent = name;
+            document.getElementById('successPosition').textContent = position || 'N/A';
+            document.getElementById('successDepartment').textContent = department || 'N/A';
+            document.getElementById('successTime').textContent = new Date().toLocaleTimeString('vi-VN');
+            showSection('successSection');
+        }
+
+        // ============ CANCEL FORM ============
+        function cancelForm() {
+            log('↩️ cancelForm()');
+            document.getElementById('fullName').value = '';
+            document.getElementById('position').value = '';
+            document.getElementById('department').value = '';
+            document.getElementById('qrInput').value = '';
+            if (isAdminOverrideMode) {
+                log('🔑 Thoát chế độ admin override');
+                isAdminOverrideMode = false;
+                document.getElementById('adminOverrideNotice').style.display = 'none';
+            }
+            showSection('qrSection');
+            document.getElementById('qrInput').focus();
+        }
+
+        function startOver() {
+            log('🔄 startOver()');
+            cancelForm();
+        }
+
+        // ============ AUTOCOMPLETE KEYBOARD NAV (đăng ký 1 lần) ============
+        document.addEventListener('DOMContentLoaded', () => {
+            const positionInput = document.getElementById('position');
+            if (positionInput) {
+                positionInput.addEventListener('keydown', (e) => {
+                    const box = document.getElementById('positionSuggestions');
+                    const items = box.querySelectorAll('.position-suggestion-item');
+                    if (!items.length || !box.classList.contains('show')) return;
+
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        positionActiveIndex = Math.min(positionActiveIndex + 1, items.length - 1);
+                        updatePositionActiveItem(items);
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        positionActiveIndex = Math.max(positionActiveIndex - 1, 0);
+                        updatePositionActiveItem(items);
+                    } else if (e.key === 'Enter' && positionActiveIndex >= 0) {
+                        e.preventDefault();
+                        items[positionActiveIndex].dispatchEvent(new Event('mousedown'));
+                    } else if (e.key === 'Escape') {
+                        box.classList.remove('show');
+                    }
+                });
+            }
+
+            const departmentInput = document.getElementById('department');
+            if (departmentInput) {
+                departmentInput.addEventListener('keydown', (e) => {
+                    const box = document.getElementById('departmentSuggestions');
+                    const items = box.querySelectorAll('.position-suggestion-item');
+                    if (!items.length || !box.classList.contains('show')) return;
+
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        departmentActiveIndex = Math.min(departmentActiveIndex + 1, items.length - 1);
+                        updateDepartmentActiveItem(items);
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        departmentActiveIndex = Math.max(departmentActiveIndex - 1, 0);
+                        updateDepartmentActiveItem(items);
+                    } else if (e.key === 'Enter' && departmentActiveIndex >= 0) {
+                        e.preventDefault();
+                        items[departmentActiveIndex].dispatchEvent(new Event('mousedown'));
+                    } else if (e.key === 'Escape') {
+                        box.classList.remove('show');
+                    }
+                });
+            }
+        });
+
+        document.addEventListener('keypress', (e) => {
+            if (IS_ADMIN_MODE) return;
+            if (e.key === 'Enter') {
+                if (document.getElementById('qrSection').classList.contains('active')) {
+                    processQR();
+                } else if (document.getElementById('formSection').classList.contains('active')) {
+                    submitForm();
+                }
+            }
+        });
+
+        // ============ INITIALIZE CHECKIN APP ============
+        function initCheckinApp() {
+            log('🚀 Page loaded, initializing...');
+
+            loadMeetingConfig().then(() => {
+                // Sau khi (cố gắng) load config từ mã ngắn trong URL, mới tải gợi ý —
+                // nối tiếp tuần tự (không song song) để tránh 2 request JSONP cùng lúc
+                // gây lỗi CORS ngầm trên một số phiên bản Apps Script.
+                loadPositionSuggestions().then(() => loadDepartmentSuggestions());
+
+                const params = new URLSearchParams(window.location.search);
+                const shortCodeFromURL = params.get('c');
+                if (shortCodeFromURL && currentMeetingConfig) {
+                    log('🚀 Tự động xử lý mã cuộc họp từ URL:', shortCodeFromURL);
+                    validateGPS(currentMeetingConfig.meetingID);
+                } else {
+                    log('⚠️ Không có mã cuộc họp hợp lệ trong URL, hiện lại ô nhập thủ công');
+                    document.getElementById('qrInputGroup').style.display = 'block';
+                    if (document.getElementById('instructionText')) {
+                        document.getElementById('instructionText').textContent = '📱 Quét mã QR hoặc nhập mã cuộc họp thủ công';
+                    }
+                    document.getElementById('qrInput').focus();
+                }
+
+                log('✅ Initialization complete');
+            });
+        }
+    </script>
