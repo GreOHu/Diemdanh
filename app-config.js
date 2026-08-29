@@ -15,7 +15,7 @@ const APP_CONFIG = {
     // Bán kính GPS cho phép (mét) — người điểm danh phải đứng trong phạm vi
     // này tính từ toạ độ hội trường (coordinates) mới được điểm danh.
     // Áp dụng CHUNG cho mọi cuộc họp.
-    gpsRadius: 50,
+    gpsRadius: 30,
 
     // Mật khẩu admin mặc định dùng khi tạo cuộc họp mới ở trang index.html,
     // và cũng là mật khẩu để mở chức năng "Điểm danh thay" ở checkin.html.
