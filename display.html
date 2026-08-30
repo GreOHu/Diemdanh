@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#05070F">
+<title>Màn Hình Chiếu - Điểm Danh</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<!--
+    ============================================================
+    MÀN HÌNH CHIẾU (display.html) — dùng để chiếu lên LED/máy chiếu
+    song song với việc điểm danh qua index.html.
+
+    CÁCH DÙNG:
+    - Mở file này với ?id=<MEETING_ID> trong URL, ví dụ:
+      .../display.html?id=ABC123
+    - Lấy link này bằng cách: vào trang Admin (index.html?mode=admin),
+      sau khi lưu cấu hình cuộc họp sẽ có nút "🖥️ Mở Màn Hình Chiếu".
+    - Trang tự động polling danh sách điểm danh mỗi 6 giây — không cần
+      bấm gì, cứ để trình duyệt mở sẵn trên màn hình LED suốt buổi họp.
+    - Nền chính là ảnh/video slide (đọc từ config cuộc họp, admin dán
+      danh sách URL trong ô "Ảnh/video nền cho Màn Hình Chiếu").
+      Nếu không cấu hình, nền mặc định là màu tối trơn.
+    - Góc dưới màn hình luôn hiện mini dashboard: tổng số đã điểm danh
+      + top đơn vị.
+    - Khi có người điểm danh mới, tên hiện to giữa màn hình vài giây
+      rồi tự ẩn.
+    - Chỉnh sửa GOOGLE_APPS_SCRIPT_URL bên dưới nếu bạn đổi deployment
+      Apps Script khác với URL trong index.html.
+    ============================================================
+-->
+<style>
+    :root {
+        --ink: #EAF1FB;
+        --ink-soft: #A9BAD4;
+        --muted: #7387A8;
+        --brand: #3B82F6;
+        --accent: #22D3D0;
+        --surface: rgba(22, 30, 54, 0.72);
+        --line: rgba(148, 178, 232, 0.18);
+        --success: #34D399;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #05070F;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: var(--ink);
+    }
+
+    /* ============ LỚP NỀN: SLIDESHOW ẢNH/VIDEO ============ */
+    #slideLayer {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        background: radial-gradient(1200px 700px at 50% 30%, #0E1B33 0%, #05070F 70%);
+    }
+    .slide-media {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background: #05070F;
+        opacity: 0;
+        transition: opacity 1s ease;
+    }
+    .slide-media.active {
+        opacity: 1;
+    }
+    #slideEmptyState {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        color: var(--muted);
+        text-align: center;
+        padding: 40px;
+    }
+    #slideEmptyState .icon { font-size: 56px; opacity: 0.5; }
+    #slideEmptyState .title { font-size: 20px; font-weight: 700; color: var(--ink-soft); }
+    #slideEmptyState .desc { font-size: 14px; max-width: 480px; line-height: 1.6; }
+
+    /* ============ MINI DASHBOARD GÓC DƯỚI ============ */
+    #miniDashboard {
+        position: fixed;
+        left: 20px;
+        right: 20px;
+        bottom: 20px;
+        z-index: 10;
+        display: flex;
+        align-items: stretch;
+        gap: 14px;
+        max-height: 12vh;
+    }
+
+    .dash-card {
+        background: var(--surface);
+        -webkit-backdrop-filter: blur(18px) saturate(150%);
+        backdrop-filter: blur(18px) saturate(150%);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        padding: 10px 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .dash-total {
+        flex: 0 0 auto;
+        min-width: 190px;
+    }
+    .dash-total .icon-badge {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        background: linear-gradient(160deg, var(--brand), #2563EB);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
+        flex: none;
+    }
+    .dash-total .num {
+        font-size: 26px;
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: -0.02em;
+    }
+    .dash-total .lbl {
+        font-size: 10.5px;
+        color: var(--ink-soft);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 700;
+        margin-top: 3px;
+    }
+
+    .dash-units {
+        flex: 1 1 auto;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .dash-units .units-scroll {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        white-space: nowrap;
+    }
+    .dash-units .units-scroll::-webkit-scrollbar { display: none; }
+
+    .unit-chip {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 14px 6px 10px;
+    }
+    .unit-chip .unit-count {
+        font-size: 15px;
+        font-weight: 800;
+        color: var(--accent);
+        min-width: 20px;
+        text-align: center;
+    }
+    .unit-chip .unit-name {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink-soft);
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .dash-clock {
+        flex: 0 0 auto;
+        text-align: right;
+        min-width: 90px;
+    }
+    .dash-clock .time {
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        font-variant-numeric: tabular-nums;
+    }
+    .dash-clock .date {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+    }
+
+    .live-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 0 3px rgba(52,211,153,0.28);
+        flex: none;
+        animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
+    /* ============ POPUP THÔNG BÁO ĐIỂM DANH MỚI ============ */
+    #checkinToast {
+        position: fixed;
+        top: 6%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-30px) scale(0.92);
+        z-index: 20;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.45s cubic-bezier(.2,.8,.2,1), transform 0.45s cubic-bezier(.2,.8,.2,1);
+        background: linear-gradient(160deg, rgba(34,211,208,0.16), rgba(59,130,246,0.16));
+        -webkit-backdrop-filter: blur(24px) saturate(160%);
+        backdrop-filter: blur(24px) saturate(160%);
+        border: 1.5px solid rgba(148, 178, 232, 0.3);
+        border-radius: 26px;
+        box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset;
+        padding: 26px 46px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        max-width: 90vw;
+    }
+    #checkinToast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+    #checkinToast .toast-check {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: var(--success);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        flex: none;
+        box-shadow: 0 0 0 8px rgba(52,211,153,0.16);
+    }
+    #checkinToast .toast-text .eyebrow {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--success);
+        margin-bottom: 4px;
+    }
+    #checkinToast .toast-text .name {
+        font-size: 30px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        line-height: 1.15;
+    }
+    #checkinToast .toast-text .meta {
+        font-size: 14.5px;
+        color: var(--ink-soft);
+        margin-top: 4px;
+    }
+
+    /* ============ HEADER NHỎ (tên cuộc họp), góc trên ============ */
+    #topBar {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 10;
+        background: var(--surface);
+        -webkit-backdrop-filter: blur(18px) saturate(150%);
+        backdrop-filter: blur(18px) saturate(150%);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ink-soft);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 60vw;
+    }
+    #topBar .title-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #connError {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10;
+        background: rgba(248,113,113,0.14);
+        border: 1px solid rgba(248,113,113,0.3);
+        color: #FCA5A5;
+        border-radius: 12px;
+        padding: 8px 14px;
+        font-size: 12.5px;
+        font-weight: 600;
+        display: none;
+    }
+    #connError.show { display: block; }
+</style>
+</head>
+<body>
+
+    <div id="slideLayer">
+        <div id="slideEmptyState">
+            <div class="icon">🖼️</div>
+            <div class="title">Chưa có ảnh/video nền cho Màn Hình Chiếu</div>
+            <div class="desc">Vào trang Admin → mục "Ảnh/video nền cho Màn Hình Chiếu" để dán danh sách URL ảnh (.jpg, .png, .gif) hoặc video (.mp4, .webm) — mỗi dòng 1 URL.</div>
+        </div>
+    </div>
+
+    <div id="topBar" style="display:none;">
+        <span>📋</span>
+        <span class="title-text" id="topBarTitle"></span>
+    </div>
+
+    <div id="connError">⚠️ Mất kết nối, đang thử lại...</div>
+
+    <div id="checkinToast">
+        <div class="toast-check">✓</div>
+        <div class="toast-text">
+            <div class="eyebrow">Vừa điểm danh</div>
+            <div class="name" id="toastName">—</div>
+            <div class="meta" id="toastMeta">—</div>
+        </div>
+    </div>
+
+    <div id="miniDashboard">
+        <div class="dash-card dash-total">
+            <div class="icon-badge">✅</div>
+            <div>
+                <div class="num" id="totalCount">0</div>
+                <div class="lbl"><span class="live-dot"></span>&nbsp;Đã điểm danh</div>
+            </div>
+        </div>
+
+        <div class="dash-card dash-units">
+            <div class="units-scroll" id="unitsScroll">
+                <span style="color:var(--muted); font-size:13px;">Chưa có dữ liệu đơn vị</span>
+            </div>
+        </div>
+
+        <div class="dash-card dash-clock">
+            <div>
+                <div class="time" id="clockTime">--:--</div>
+                <div class="date" id="clockDate">--/--/----</div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // ============================================================
+    // CHỈNH URL NÀY nếu bạn deploy Apps Script khác với URL trong
+    // index.html. Mặc định dùng chung 1 deployment.
+    // ============================================================
+    const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzoJirrnHSazvKRTeiUTdVD12bAgk7Q-2-m15-fj3y06Mal6MugM_LkAc4P81A3pvk3/exec';
+
+    const POLL_INTERVAL_MS = 6000;
+    const SLIDE_INTERVAL_MS = 8000;
+    const TOAST_DURATION_MS = 6000;
+
+    const params = new URLSearchParams(window.location.search);
+    const meetingID = params.get('id') || params.get('meetingID') || '';
+
+    let jsonpCounter = 0;
+    function callGASJsonp(payload, timeoutMs = 10000) {
+        return new Promise((resolve, reject) => {
+            jsonpCounter++;
+            const callbackName = 'displayJsonp_' + Date.now() + '_' + jsonpCounter;
+            const script = document.createElement('script');
+            let settled = false;
+
+            const cleanup = () => {
+                delete window[callbackName];
+                if (script.parentNode) script.parentNode.removeChild(script);
+                clearTimeout(timer);
+            };
+
+            const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(new Error('timeout'));
+            }, timeoutMs);
+
+            window[callbackName] = (data) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(data);
+            };
+
+            script.onerror = () => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(new Error('script load error'));
+            };
+
+            const p = new URLSearchParams();
+            Object.keys(payload).forEach(k => p.set(k, payload[k]));
+            p.set('callback', callbackName);
+            script.src = GOOGLE_APPS_SCRIPT_URL + '?' + p.toString();
+            document.body.appendChild(script);
+        });
+    }
+
+    // ============ ĐỒNG HỒ ============
+    function tickClock() {
+        const now = new Date();
+        document.getElementById('clockTime').textContent =
+            now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('clockDate').textContent =
+            now.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+    tickClock();
+    setInterval(tickClock, 1000);
+
+    // ============ SLIDESHOW NỀN (ảnh/video từ config cuộc họp) ============
+    let slideUrls = [];
+    let slideIndex = 0;
+    let slideTimer = null;
+
+    function isVideoUrl(url) {
+        return /\.(mp4|webm|ogg)(\?|#|$)/i.test(url);
+    }
+
+    function renderSlideLayer() {
+        const layer = document.getElementById('slideLayer');
+        const emptyState = document.getElementById('slideEmptyState');
+        if (!slideUrls.length) {
+            layer.querySelectorAll('.slide-media').forEach(el => el.remove());
+            emptyState.style.display = 'flex';
+            return;
+        }
+        emptyState.style.display = 'none';
+        layer.querySelectorAll('.slide-media').forEach(el => el.remove());
+
+        slideUrls.forEach((url, i) => {
+            let el;
+            if (isVideoUrl(url)) {
+                el = document.createElement('video');
+                el.src = url;
+                el.autoplay = true;
+                el.muted = true;
+                el.loop = true;
+                el.playsInline = true;
+            } else {
+                el = document.createElement('img');
+                el.src = url;
+                el.alt = '';
+            }
+            el.className = 'slide-media';
+            el.dataset.idx = i;
+            layer.appendChild(el);
+        });
+
+        showSlide(0);
+        if (slideUrls.length > 1) {
+            clearInterval(slideTimer);
+            slideTimer = setInterval(() => {
+                showSlide((slideIndex + 1) % slideUrls.length);
+            }, SLIDE_INTERVAL_MS);
+        }
+    }
+
+    function showSlide(idx) {
+        slideIndex = idx;
+        document.querySelectorAll('.slide-media').forEach(el => {
+            el.classList.toggle('active', Number(el.dataset.idx) === idx);
+        });
+    }
+
+    // ============ DỮ LIỆU CUỘC HỌP (tên cuộc họp + danh sách slide) ============
+    function loadMeetingConfig() {
+        if (!meetingID) return;
+        // Ưu tiên localStorage nếu đang mở trên cùng máy vừa cấu hình (nhanh,
+        // không cần chờ mạng). Nếu không có/không khớp — VD màn hình LED dùng
+        // trình duyệt/máy khác với máy admin — tra trực tiếp từ server bằng
+        // chính meetingID (action getMeetingConfigByID, không cần mã ngắn).
+        try {
+            const saved = localStorage.getItem('meetingConfig');
+            if (saved) {
+                const cfg = JSON.parse(saved);
+                if (cfg.meetingID === meetingID) {
+                    applyMeetingMeta(cfg);
+                    return;
+                }
+            }
+        } catch (e) { /* ignore */ }
+
+        callGASJsonp({ action: 'getMeetingConfigByID', meetingID: meetingID })
+            .then(data => {
+                if (data.success && data.config) {
+                    applyMeetingMeta(data.config);
+                }
+            })
+            .catch(() => { /* im lặng - dashboard vẫn chạy bình thường không cần config */ });
+    }
+
+    function applyMeetingMeta(cfg) {
+        if (cfg.meetingTitle || cfg.unitName) {
+            document.getElementById('topBarTitle').textContent = cfg.meetingTitle || cfg.unitName;
+            document.getElementById('topBar').style.display = 'flex';
+        }
+        if (cfg.displayMediaUrls) {
+            slideUrls = cfg.displayMediaUrls.split('\n').map(s => s.trim()).filter(Boolean);
+            renderSlideLayer();
+        }
+    }
+
+    // ============ POLLING DANH SÁCH ĐIỂM DANH ============
+    let knownNames = new Set(); // key = fullName + '|' + time, để phát hiện người mới
+    let firstLoadDone = false;
+    let toastQueue = [];
+    let toastShowing = false;
+
+    function keyFor(person) {
+        return (person.fullName || '') + '|' + (person.time || '') + '|' + (person.date || '') + '|' + (person.soLan || 1);
+    }
+
+    function pollAttendance() {
+        if (!meetingID) return;
+        callGASJsonp({ action: 'getAttendanceList', meetingID: meetingID })
+            .then(data => {
+                document.getElementById('connError').classList.remove('show');
+                if (!data.success) return;
+                const list = data.list || [];
+                updateDashboard(list);
+
+                if (firstLoadDone) {
+                    const newOnes = list.filter(p => !knownNames.has(keyFor(p)));
+                    newOnes.forEach(p => toastQueue.push(p));
+                    processToastQueue();
+                }
+                knownNames = new Set(list.map(keyFor));
+                firstLoadDone = true;
+            })
+            .catch(() => {
+                document.getElementById('connError').classList.add('show');
+            });
+    }
+
+    function updateDashboard(list) {
+        document.getElementById('totalCount').textContent = list.length;
+
+        const byUnit = {};
+        list.forEach(p => {
+            const unit = (p.department || 'Chưa rõ đơn vị').trim() || 'Chưa rõ đơn vị';
+            byUnit[unit] = (byUnit[unit] || 0) + 1;
+        });
+        const sorted = Object.entries(byUnit).sort((a, b) => b[1] - a[1]);
+
+        const scroll = document.getElementById('unitsScroll');
+        if (!sorted.length) {
+            scroll.innerHTML = '<span style="color:var(--muted); font-size:13px;">Chưa có ai điểm danh</span>';
+            return;
+        }
+        scroll.innerHTML = sorted.map(([unit, count]) => `
+            <div class="unit-chip">
+                <span class="unit-count">${count}</span>
+                <span class="unit-name">${escapeHtml(unit)}</span>
+            </div>
+        `).join('');
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function processToastQueue() {
+        if (toastShowing || !toastQueue.length) return;
+        toastShowing = true;
+        const person = toastQueue.shift();
+        const toast = document.getElementById('checkinToast');
+        document.getElementById('toastName').textContent = person.fullName || 'Đại biểu';
+        const metaParts = [];
+        if (person.position) metaParts.push(person.position);
+        if (person.department) metaParts.push(person.department);
+        document.getElementById('toastMeta').textContent = metaParts.join(' • ') || (person.time || '');
+
+        toast.classList.add('show');
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                toastShowing = false;
+                processToastQueue();
+            }, 500);
+        }, TOAST_DURATION_MS);
+    }
+
+    // ============ KHỞI ĐỘNG ============
+    if (!meetingID) {
+        document.getElementById('slideEmptyState').innerHTML =
+            '<div class="icon">⚠️</div>' +
+            '<div class="title">Thiếu mã cuộc họp</div>' +
+            '<div class="desc">Mở trang này kèm ?id=MÃ_CUỘC_HỌP trong URL. Vào trang Admin, lưu cấu hình rồi bấm nút "Mở Màn Hình Chiếu" để lấy đúng link.</div>';
+    } else {
+        loadMeetingConfig();
+        pollAttendance();
+        setInterval(pollAttendance, POLL_INTERVAL_MS);
+    }
+</script>
+</body>
+</html>
