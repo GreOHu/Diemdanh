@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#7A0C1B">
+<title>Màn Hình Chiếu - Điểm Danh</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="profanity-filter.js"></script>
+<!--
+    ============================================================
+    MÀN HÌNH CHIẾU (display.html) — dùng để chiếu lên LED/máy chiếu
+    song song với việc điểm danh qua index.html.
+
+    CÁCH DÙNG:
+    - Mở file này với ?id=<MEETING_ID> trong URL, ví dụ:
+      .../display.html?id=ABC123
+    - Lấy link này bằng cách: vào trang Admin (index.html?mode=admin),
+      sau khi lưu cấu hình cuộc họp sẽ có nút "🖥️ Mở Màn Hình Chiếu".
+    - Cấu hình ảnh trống đồng + nội dung banner ngay trong trang Admin
+      (mục "URL ảnh trống đồng" và "Nội dung Banner Hội Nghị").
+
+    CẤU TRÚC LAYER (từ dưới lên trên):
+    - Layer 1: nền đỏ (gradient cố định trong code)
+    - Layer 2: ảnh trống đồng xoay chậm giữa màn hình (URL từ config)
+    - Layer 3: khung viền cách mép màn hình
+    - Layer 4: banner hội nghị (nội dung từ config, căn giữa khung)
+    - Thanh dưới cùng: dashboard đơn vị (trái) | banner tên chạy
+      marquee (giữa) | thông báo tên vừa điểm danh (phải)
+    ============================================================
+-->
+<style>
+    :root {
+        --ink: #FFF8F0;
+        --ink-soft: rgba(255,248,240,0.78);
+        --muted: rgba(255,248,240,0.5);
+        --gold: #E8C468;
+        --gold-soft: rgba(232,196,104,0.35);
+        --success: #34D399;
+        --surface: rgba(20, 4, 6, 0.55);
+        --line: rgba(232,196,104,0.4);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #4A0510;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: var(--ink);
+    }
+
+    /* ============ LAYER 1: NỀN ĐỎ ============ */
+    /* Mặc định: gradient CSS. Nếu admin dán URL ảnh nền (displayBackgroundUrl),
+       JS sẽ thêm class .has-image và set background-image thay cho gradient. */
+    #layerRed {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        background:
+            radial-gradient(1400px 900px at 50% 35%, #A3121F 0%, #7A0C1B 55%, #4A0510 100%);
+        background-size: cover;
+        background-position: center;
+    }
+
+    /* ============ LAYER 2: TRỐNG ĐỒNG XOAY ============ */
+    #layerDrum {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        pointer-events: none;
+    }
+    #drumImg {
+        width: 100vw;
+        height: 100vw;
+        max-width: none;
+        max-height: none;
+        object-fit: contain;
+        opacity: 0.22;
+        animation: spinDrum 60s linear infinite;
+        filter: drop-shadow(0 0 60px rgba(232,196,104,0.15));
+    }
+    @keyframes spinDrum {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(-360deg); }
+    }
+
+    /* ============ LAYER 3: KHUNG VIỀN ============ */
+    /* Mặc định: 2 nét border vàng vẽ bằng CSS. Nếu admin dán URL ảnh khung
+       (displayFrameUrl), JS sẽ thêm class .has-image: ẩn 2 nét CSS và hiện
+       ảnh PNG phủ toàn màn hình bên trong #layerFrame. */
+    #layerFrame {
+        position: fixed;
+        top: 28px;
+        left: 28px;
+        right: 28px;
+        bottom: 28px;
+        z-index: 3;
+        border: 2px solid var(--gold-soft);
+        border-radius: 4px;
+        pointer-events: none;
+    }
+    #layerFrame::before {
+        content: '';
+        position: absolute;
+        inset: 8px;
+        border: 1px solid var(--gold-soft);
+        border-radius: 2px;
+    }
+    #layerFrame.has-image {
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border: none;
+        border-radius: 0;
+    }
+    #layerFrame.has-image::before {
+        display: none;
+    }
+    #layerFrame img {
+        display: none;
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+    }
+    #layerFrame.has-image img {
+        display: block;
+    }
+
+    /* ============ LAYER 4: BANNER HỘI NGHỊ ============ */
+    #layerBanner {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 92px; /* chừa chỗ cho thanh dưới cùng */
+        z-index: 4;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 90px;
+        text-align: center;
+    }
+    #bannerContent {
+        max-width: 1100px;
+    }
+    .banner-line {
+        text-shadow: 0 2px 18px rgba(0,0,0,0.55);
+    }
+    .banner-line.align-left { text-align: left; }
+    .banner-line.align-center { text-align: center; }
+    .banner-line.align-right { text-align: right; }
+    .banner-line.size-sm { font-size: 22px; font-weight: 500; color: var(--ink-soft); }
+    .banner-line.size-md { font-size: 30px; font-weight: 700; letter-spacing: 0.02em; }
+    .banner-line.size-lg { font-size: 42px; font-weight: 800; letter-spacing: 0.01em; color: var(--gold); }
+    .banner-line.size-xl { font-size: 64px; font-weight: 900; letter-spacing: 0.02em; color: var(--gold); }
+    .banner-line.bold { font-weight: 900 !important; }
+    .banner-line.empty { height: 0.4em; }
+
+    /* ============ NHẬN DIỆN GÓC TRÊN: TÊN CUỘC HỌP NHỎ ============ */
+    #topBar {
+        position: fixed;
+        top: 46px;
+        left: 46px;
+        z-index: 10;
+        background: var(--surface);
+        -webkit-backdrop-filter: blur(14px);
+        backdrop-filter: blur(14px);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 7px 14px;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink-soft);
+        display: none;
+        align-items: center;
+        gap: 8px;
+        max-width: 40vw;
+    }
+    #topBar .title-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #connError {
+        position: fixed;
+        top: 46px;
+        right: 46px;
+        z-index: 10;
+        background: rgba(248,113,113,0.16);
+        border: 1px solid rgba(248,113,113,0.4);
+        color: #FCA5A5;
+        border-radius: 10px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        display: none;
+    }
+    #connError.show { display: block; }
+
+    /* ============ THANH DƯỚI CÙNG: 3 VÙNG (1/5 - 3/5 - 1/5) ============ */
+    #bottomBar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 92px;
+        z-index: 20;
+        display: flex;
+        align-items: stretch;
+        background: rgba(10, 2, 4, 0.72);
+        -webkit-backdrop-filter: blur(20px) saturate(140%);
+        backdrop-filter: blur(20px) saturate(140%);
+        border-top: 1px solid var(--line);
+    }
+
+    /* --- Vùng trái: Dashboard đơn vị — DẠNG CUỘN DỌC TỰ ĐỘNG -----
+       Thiết kế lại vì số đơn vị thực tế có thể lên tới hơn 100 (xem
+       UNIT_LIST trong Ma.gs) — một danh sách tĩnh top-5 không đủ chỗ
+       và luôn bị khuất. Thay bằng băng cuộn dọc chạy liên tục, hiển
+       thị lần lượt TẤT CẢ đơn vị đã có người điểm danh, không giới
+       hạn số dòng. Vùng cũng được nới rộng hơn (28% thay vì 20%) vì
+       cần chỗ cho tên đơn vị dài. */
+    #dashZone {
+        flex: 0 0 30%;
+        max-width: 30%;
+        display: flex;
+        align-items: stretch;
+        gap: 14px;
+        padding: 10px 16px;
+        border-right: 1px solid rgba(232,196,104,0.22);
+        overflow: hidden;
+    }
+    #dashZone .total-badge {
+        flex: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding-right: 14px;
+        border-right: 1px solid rgba(232,196,104,0.18);
+    }
+    #dashZone .total-badge .num {
+        font-size: 28px;
+        font-weight: 900;
+        color: var(--gold);
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+    }
+    #dashZone .total-badge .lbl {
+        font-size: 9px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 700;
+        margin-top: 4px;
+        white-space: nowrap;
+    }
+    #dashZone .total-badge .unit-count-lbl {
+        font-size: 9.5px;
+        color: var(--ink-soft);
+        margin-top: 8px;
+        white-space: nowrap;
+        font-weight: 600;
+    }
+    #dashUnitsWrap {
+        flex: 1 1 auto;
+        min-width: 0;
+        position: relative;
+        overflow: hidden;
+        /* mờ dần ở mép trên/dưới để chữ trôi vào/ra mượt hơn thay vì
+           bị cắt cứng */
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+        mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    }
+    #dashUnitsTrack {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 12.5px;
+        line-height: 1.4;
+        will-change: transform;
+        animation: dashScrollUp linear infinite;
+    }
+    #dashUnitsTrack.paused { animation-play-state: paused; }
+    @keyframes dashScrollUp {
+        from { transform: translateY(0); }
+        to { transform: translateY(-50%); } /* nội dung được nhân đôi -> cuộn nửa track là 1 vòng */
+    }
+    #dashUnitsTrack .unit-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        color: var(--ink-soft);
+        white-space: nowrap;
+        padding: 2px 0;
+    }
+    #dashUnitsTrack .unit-row .u-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+    #dashUnitsTrack .unit-row .u-count {
+        flex: none;
+        font-weight: 800;
+        color: var(--gold);
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* --- Vùng giữa: Banner tên chạy marquee (xác nhận điểm danh) ---
+       THIẾT KẾ MỚI: mỗi tên chỉ chạy MỘT LƯỢT từ phải sang trái rồi
+       biến mất (không lặp vô hạn như trước — tên đầu không còn bị
+       lặp lại ngay, và tốc độ đọc cố định, không dồn lại khi đông
+       người vì mỗi tên đi riêng, xếp hàng chờ tới lượt). */
+    #marqueeZone {
+        flex: 1 1 50%;
+        max-width: 50%;
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+    }
+    #marqueeBadge {
+        position: absolute;
+        left: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        color: var(--success);
+        background: rgba(20,4,6,0.85);
+        border: 1px solid rgba(52,211,153,0.3);
+        border-radius: 999px;
+        padding: 4px 10px;
+        z-index: 5;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+    #marqueeTrack {
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+    .marquee-item {
+        position: absolute;
+        top: 50%;
+        left: 100%;
+        display: inline-flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 0 24px;
+        font-size: 22px;
+        font-weight: 800;
+        color: var(--ink);
+        white-space: nowrap;
+        will-change: transform;
+        animation: marqueeOnePass linear forwards;
+        z-index: 2;
+    }
+    /* Tên chạy hết chiều rộng khung rồi biến mất hẳn bên trái, không
+       quay vòng lại — dùng translateX theo % của chính item nên độ
+       dài tên khác nhau vẫn chạy mượt cùng 1 công thức. */
+    @keyframes marqueeOnePass {
+        from { transform: translate(0, -50%); }
+        to   { transform: translate(-100vw, -50%); }
+    }
+    .marquee-item .m-meta {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--ink-soft);
+    }
+    #marqueeEmpty {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        text-align: center;
+        padding-left: 130px; /* chừa chỗ cho badge bên trái */
+        font-size: 13px;
+        color: var(--muted);
+    }
+
+    /* --- Vùng phải: Popup thông báo tên vừa quét --- */
+    #toastZone {
+        flex: 0 0 18%;
+        max-width: 18%;
+        position: relative;
+        border-left: 1px solid rgba(232,196,104,0.22);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 14px;
+    }
+    #toastZoneIdle {
+        font-size: 11.5px;
+        color: var(--muted);
+        text-align: center;
+        line-height: 1.5;
+    }
+    #checkinToast {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 0 12px;
+        opacity: 0;
+        transform: scale(0.85);
+        transition: opacity 0.35s ease, transform 0.35s ease;
+        background: linear-gradient(160deg, rgba(52,211,153,0.16), rgba(232,196,104,0.10));
+    }
+    #checkinToast.show {
+        opacity: 1;
+        transform: scale(1);
+    }
+    #checkinToast .toast-check {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--success);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        flex: none;
+    }
+    #checkinToast .toast-text {
+        min-width: 0;
+    }
+    #checkinToast .toast-text .name {
+        font-size: 13.5px;
+        font-weight: 800;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    #checkinToast .toast-text .meta {
+        font-size: 10.5px;
+        color: var(--ink-soft);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+</head>
+<body>
+
+    <div id="layerRed"></div>
+
+    <div id="layerDrum">
+        <img id="drumImg" src="" alt="" style="display:none;">
+    </div>
+
+    <div id="layerFrame"><img id="frameImg" src="" alt=""></div>
+
+    <div id="layerBanner">
+        <div id="bannerContent"></div>
+    </div>
+
+    <div id="topBar">
+        <span>📋</span>
+        <span class="title-text" id="topBarTitle"></span>
+    </div>
+
+    <div id="connError">⚠️ Mất kết nối, đang thử lại...</div>
+
+    <div id="bottomBar">
+        <div id="dashZone">
+            <div class="total-badge">
+                <div class="num" id="totalCount">0</div>
+                <div class="lbl">Đã điểm danh</div>
+                <div class="unit-count-lbl" id="unitCountLbl">0 đơn vị</div>
+            </div>
+            <div id="dashUnitsWrap">
+                <div id="dashUnitsTrack">
+                    <div class="unit-row"><span class="u-name" style="color:var(--muted)">Chưa có dữ liệu</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="marqueeZone">
+            <span id="marqueeBadge">✅ VỪA ĐIỂM DANH</span>
+            <span id="marqueeEmpty">Đang chờ người tham dự điểm danh...</span>
+            <div id="marqueeTrack"></div>
+        </div>
+
+        <div id="toastZone">
+            <div id="toastZoneIdle">Chưa có<br>điểm danh mới</div>
+            <div id="checkinToast">
+                <div class="toast-check">✓</div>
+                <div class="toast-text">
+                    <div class="name" id="toastName">—</div>
+                    <div class="meta" id="toastMeta">—</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // ============================================================
+    // CHỈNH URL NÀY nếu bạn deploy Apps Script khác với URL trong
+    // index.html. Mặc định dùng chung 1 deployment.
+    // ============================================================
+    const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzoJirrnHSazvKRTeiUTdVD12bAgk7Q-2-m15-fj3y06Mal6MugM_LkAc4P81A3pvk3/exec';
+
+    const POLL_INTERVAL_MS = 6000;
+    const TOAST_DURATION_MS = 5000;
+
+    const params = new URLSearchParams(window.location.search);
+    const meetingID = params.get('id') || params.get('meetingID') || '';
+
+    let jsonpCounter = 0;
+    function callGASJsonp(payload, timeoutMs = 10000) {
+        return new Promise((resolve, reject) => {
+            jsonpCounter++;
+            const callbackName = 'displayJsonp_' + Date.now() + '_' + jsonpCounter;
+            const script = document.createElement('script');
+            let settled = false;
+
+            const cleanup = () => {
+                delete window[callbackName];
+                if (script.parentNode) script.parentNode.removeChild(script);
+                clearTimeout(timer);
+            };
+
+            const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(new Error('timeout'));
+            }, timeoutMs);
+
+            window[callbackName] = (data) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(data);
+            };
+
+            script.onerror = () => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(new Error('script load error'));
+            };
+
+            const p = new URLSearchParams();
+            Object.keys(payload).forEach(k => p.set(k, payload[k]));
+            p.set('callback', callbackName);
+            script.src = GOOGLE_APPS_SCRIPT_URL + '?' + p.toString();
+            document.body.appendChild(script);
+        });
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    // Lớp phòng hộ thứ 2: index.html đã chặn không cho gửi tên phản
+    // cảm, nhưng dữ liệu cũ trong Sheet (nhập trước khi có bộ lọc,
+    // hoặc sửa tay trực tiếp trong Sheet) vẫn có thể lọt qua đây —
+    // che lại trước khi đưa lên LED.
+    function sanitizePerson(p) {
+        if (!window.ProfanityFilter) return p;
+        return {
+            ...p,
+            fullName: ProfanityFilter.maskIfBlocked(p.fullName),
+            position: ProfanityFilter.check(p.position || '').blocked ? '' : p.position,
+            department: ProfanityFilter.check(p.department || '').blocked ? '' : p.department
+        };
+    }
+
+    // ============ LAYER 2: ẢNH TRỐNG ĐỒNG ============
+    function applyDrumImage(url) {
+        const img = document.getElementById('drumImg');
+        if (url && String(url).trim()) {
+            img.src = String(url).trim();
+            img.style.display = 'block';
+        }
+    }
+
+    // ============ LAYER 1: ẢNH NỀN ĐỎ (thay cho gradient mặc định) ============
+    function applyBackgroundImage(url) {
+        const layer = document.getElementById('layerRed');
+        if (url && String(url).trim()) {
+            layer.style.backgroundImage = `url('${String(url).trim()}')`;
+            layer.classList.add('has-image');
+        }
+    }
+
+    // ============ LAYER 3: ẢNH KHUNG VIỀN (thay cho border CSS mặc định) ============
+    function applyFrameImage(url) {
+        const layer = document.getElementById('layerFrame');
+        const img = document.getElementById('frameImg');
+        if (url && String(url).trim()) {
+            img.src = String(url).trim();
+            layer.classList.add('has-image');
+        }
+    }
+
+    // ============ LAYER 4: BANNER HỘI NGHỊ ============
+    function renderBanner(lines, lineHeight) {
+        const wrap = document.getElementById('bannerContent');
+        if (!lines || !lines.length) {
+            wrap.innerHTML = '';
+            return;
+        }
+        wrap.style.lineHeight = String(lineHeight || 1.5);
+        wrap.innerHTML = lines.map(line => {
+            const text = (line.text || '').trim();
+            const align = line.align || 'center';
+            const size = line.size || 'md';
+            const boldClass = line.bold ? ' bold' : '';
+            if (!text) {
+                return `<div class="banner-line empty"></div>`;
+            }
+            return `<div class="banner-line align-${align} size-${size}${boldClass}">${escapeHtml(text)}</div>`;
+        }).join('');
+    }
+
+    // ============ TÊN CUỘC HỌP GÓC TRÊN + ÁP DỤNG CONFIG ============
+    function applyMeetingMeta(cfg) {
+        if (cfg.meetingTitle || cfg.unitName) {
+            document.getElementById('topBarTitle').textContent = cfg.meetingTitle || cfg.unitName;
+            document.getElementById('topBar').style.display = 'flex';
+        }
+        if (cfg.displayTrongDongUrl) {
+            applyDrumImage(cfg.displayTrongDongUrl);
+        }
+        if (cfg.displayBackgroundUrl) {
+            applyBackgroundImage(cfg.displayBackgroundUrl);
+        }
+        if (cfg.displayFrameUrl) {
+            applyFrameImage(cfg.displayFrameUrl);
+        }
+        if (cfg.bannerLines && cfg.bannerLines.length) {
+            renderBanner(cfg.bannerLines, cfg.bannerLineHeight);
+        }
+    }
+
+    function loadMeetingConfig() {
+        if (!meetingID) return;
+        // Ưu tiên localStorage nếu đang mở trên cùng máy vừa cấu hình (nhanh,
+        // không cần chờ mạng). Nếu không có/không khớp — VD màn hình LED dùng
+        // trình duyệt/máy khác với máy admin — tra trực tiếp từ server bằng
+        // chính meetingID (action getMeetingConfigByID, không cần mã ngắn).
+        try {
+            const saved = localStorage.getItem('meetingConfig');
+            if (saved) {
+                const cfg = JSON.parse(saved);
+                if (cfg.meetingID === meetingID) {
+                    applyMeetingMeta(cfg);
+                    return;
+                }
+            }
+        } catch (e) { /* ignore */ }
+
+        callGASJsonp({ action: 'getMeetingConfigByID', meetingID: meetingID })
+            .then(data => {
+                if (data.success && data.config) {
+                    applyMeetingMeta(data.config);
+                }
+            })
+            .catch(() => { /* im lặng - banner/trống đồng chỉ là trang trí, không chặn dashboard */ });
+    }
+
+    // ============ POLLING DANH SÁCH ĐIỂM DANH ============
+    let knownKeys = new Set();
+    let firstLoadDone = false;
+    let toastQueue = [];
+    let toastShowing = false;
+    let marqueeQueue = []; // hàng đợi tên CHỜ chạy (mỗi tên chạy 1 lượt rồi bỏ)
+    let marqueeRunning = false;
+
+    function keyFor(person) {
+        return (person.fullName || '') + '|' + (person.time || '') + '|' + (person.date || '') + '|' + (person.soLan || 1);
+    }
+
+    function pollAttendance() {
+        if (!meetingID) return;
+        callGASJsonp({ action: 'getAttendanceList', meetingID: meetingID })
+            .then(data => {
+                document.getElementById('connError').classList.remove('show');
+                if (!data.success) return;
+                const list = (data.list || []).map(sanitizePerson);
+                updateDashboard(list);
+
+                if (firstLoadDone) {
+                    const newOnes = list.filter(p => !knownKeys.has(keyFor(p)));
+                    newOnes.forEach(p => {
+                        toastQueue.push(p);
+                        marqueeQueue.push(p);
+                    });
+                    processToastQueue();
+                    runMarqueeQueue();
+                }
+                // Lần tải đầu tiên: không dồn cả list cũ vào marquee (tránh
+                // "hiện lại từ đầu" mỗi khi mở màn hình) — chỉ dashboard cần
+                // có ngay dữ liệu, marquee sẽ chạy dần cho các lượt điểm danh
+                // MỚI kể từ lúc này.
+                knownKeys = new Set(list.map(keyFor));
+                firstLoadDone = true;
+            })
+            .catch(() => {
+                document.getElementById('connError').classList.add('show');
+            });
+    }
+
+    // ============ VÙNG TRÁI: DASHBOARD ĐƠN VỊ (băng cuộn dọc) ============
+    // Hiển thị TẤT CẢ đơn vị đã có người điểm danh (có thể hơn 100 đơn vị),
+    // không giới hạn top-5 như trước — cuộn dọc liên tục để không bị khuất.
+    let dashUnitsCount = 0;
+    function updateDashboard(list) {
+        document.getElementById('totalCount').textContent = list.length;
+
+        const byUnit = {};
+        list.forEach(p => {
+            const unit = (p.department || 'Chưa rõ đơn vị').trim() || 'Chưa rõ đơn vị';
+            byUnit[unit] = (byUnit[unit] || 0) + 1;
+        });
+        const sorted = Object.entries(byUnit).sort((a, b) => b[1] - a[1]);
+        document.getElementById('unitCountLbl').textContent = sorted.length + ' đơn vị';
+
+        const track = document.getElementById('dashUnitsTrack');
+        if (!sorted.length) {
+            track.style.animation = 'none';
+            track.innerHTML = '<div class="unit-row"><span class="u-name" style="color:var(--muted)">Chưa có dữ liệu</span></div>';
+            return;
+        }
+
+        // Không cần vẽ lại / restart animation nếu số đơn vị không đổi kể từ
+        // lần trước — tránh giật hình mỗi 6 giây khi poll (animation restart
+        // sẽ làm băng cuộn nhảy về đầu liên tục, rất khó nhìn).
+        if (sorted.length === dashUnitsCount && track.children.length) {
+            // vẫn cần cập nhật số lượng hiển thị (đổi mà thứ tự đơn vị không đổi)
+            const rows = track.querySelectorAll('.unit-row');
+            const half = sorted.length;
+            sorted.forEach(([unit, count], i) => {
+                const countEl = rows[i] && rows[i].querySelector('.u-count');
+                if (countEl) countEl.textContent = count;
+                const countEl2 = rows[i + half] && rows[i + half].querySelector('.u-count');
+                if (countEl2) countEl2.textContent = count;
+            });
+            return;
+        }
+        dashUnitsCount = sorted.length;
+
+        const rowsHtml = sorted.map(([unit, count]) => `
+            <div class="unit-row">
+                <span class="u-name">${escapeHtml(unit)}</span>
+                <span class="u-count">${count}</span>
+            </div>
+        `).join('');
+        // Nhân đôi nội dung để cuộn nửa track = đúng 1 vòng, liền mạch không
+        // hụt khoảng trắng (giống kỹ thuật marquee ngang trước đây).
+        track.innerHTML = rowsHtml + rowsHtml;
+
+        // Tốc độ cuộn tỉ lệ theo số đơn vị — càng nhiều đơn vị, thời gian
+        // 1 vòng càng dài, giữ tốc độ đọc (px/s) ổn định thay vì cuộn nhanh
+        // dần khi danh sách dài ra.
+        const approxDurationS = Math.max(14, sorted.length * 1.6);
+        track.style.animation = 'none';
+        void track.offsetWidth; // reflow để restart animation
+        track.style.animation = `dashScrollUp ${approxDurationS}s linear infinite`;
+    }
+
+    // ============ VÙNG GIỮA: MARQUEE — MỖI TÊN CHẠY 1 LƯỢT RỒI BIẾN MẤT ====
+    const MARQUEE_ITEM_DURATION_MS = 7000; // thời gian 1 tên chạy hết khung
+    const MARQUEE_GAP_MS = 900; // khoảng nghỉ giữa 2 tên để không chồng chữ
+
+    function runMarqueeQueue() {
+        if (marqueeRunning || !marqueeQueue.length) return;
+        marqueeRunning = true;
+        document.getElementById('marqueeEmpty').style.display = 'none';
+        playNextMarqueeItem();
+    }
+
+    function playNextMarqueeItem() {
+        if (!marqueeQueue.length) {
+            marqueeRunning = false;
+            document.getElementById('marqueeEmpty').style.display = '';
+            return;
+        }
+        const p = marqueeQueue.shift();
+        const track = document.getElementById('marqueeTrack');
+
+        const metaParts = [];
+        if (p.position) metaParts.push(p.position);
+        if (p.department) metaParts.push(p.department);
+        const meta = metaParts.join(' • ');
+
+        const el = document.createElement('span');
+        el.className = 'marquee-item';
+        el.style.animationDuration = MARQUEE_ITEM_DURATION_MS + 'ms';
+        el.innerHTML = `✓ ${escapeHtml(p.fullName || 'Đại biểu')}${meta ? `<span class="m-meta">${escapeHtml(meta)}</span>` : ''}`;
+        track.appendChild(el);
+
+        el.addEventListener('animationend', () => {
+            el.remove();
+        }, { once: true });
+
+        // Lượt tiếp theo bắt đầu sau một khoảng nghỉ ngắn, không đợi hết hẳn
+        // animation trước để nhiều người điểm danh liên tiếp vẫn chạy nối
+        // đuôi nhau mượt thay vì dồn cục.
+        setTimeout(playNextMarqueeItem, MARQUEE_GAP_MS);
+    }
+
+    // ============ VÙNG PHẢI: POPUP TÊN VỪA ĐIỂM DANH ============
+    function processToastQueue() {
+        if (toastShowing || !toastQueue.length) return;
+        toastShowing = true;
+        const person = toastQueue.shift();
+        const toast = document.getElementById('checkinToast');
+        const idle = document.getElementById('toastZoneIdle');
+
+        document.getElementById('toastName').textContent = person.fullName || 'Đại biểu';
+        const metaParts = [];
+        if (person.position) metaParts.push(person.position);
+        if (person.department) metaParts.push(person.department);
+        document.getElementById('toastMeta').textContent = metaParts.join(' • ') || (person.time || '');
+
+        idle.style.display = 'none';
+        toast.classList.add('show');
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                idle.style.display = 'block';
+                toastShowing = false;
+                processToastQueue();
+            }, 400);
+        }, TOAST_DURATION_MS);
+    }
+
+    // ============ KHỞI ĐỘNG ============
+    if (!meetingID) {
+        document.getElementById('bannerContent').innerHTML =
+            '<div class="banner-line size-lg align-center">⚠️ Thiếu mã cuộc họp</div>' +
+            '<div class="banner-line size-sm align-center">Mở trang này kèm ?id=MÃ_CUỘC_HỌP trong URL.<br>Vào trang Admin, lưu cấu hình rồi bấm nút "Mở Màn Hình Chiếu" để lấy đúng link.</div>';
+    } else {
+        loadMeetingConfig();
+        pollAttendance();
+        setInterval(pollAttendance, POLL_INTERVAL_MS);
+    }
+</script>
+</body>
+</html>
