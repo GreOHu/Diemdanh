@@ -9,24 +9,33 @@
    2. Gọi: ProfanityFilter.check(hoTen)
       → { blocked: true/false, matched: "từ khớp" | null }
 
-   CƠ CHẾ:
-   - normalize(text): đưa chữ về dạng "trần" để so khớp — bỏ dấu
-     tiếng Việt, hạ chữ thường, gộp các ký tự chèn giữa (dấu chấm,
-     gạch ngang, khoảng trắng, số 0/1/3/4/7 thay cho chữ cái), rồi
-     nối liền thành 1 chuỗi không khoảng trắng.
-   - Danh sách BLOCK_LIST giữ ở dạng KHÔNG DẤU, KHÔNG KHOẢNG TRẮNG
-     (đã "chuẩn hoá sẵn") — so khớp bằng cách kiểm tra chuỗi con.
-   - Việc chuẩn hoá bắt được các biến thể né lọc kiểu: "d.c.m",
-     "d c m", "d-c-m", "d1t", "l0n", "c4c", "vcl", "vkl"... vì tất cả
-     đều quy về cùng 1 dạng trước khi so khớp.
+   CƠ CHẾ (2 tầng so khớp riêng biệt):
+   - Tầng 1 — BLOCK_LIST: so khớp trên chuỗi đã BỎ HẾT DẤU + nối
+     liền (normalize) — bắt các biến thể né lọc kiểu "d.c.m",
+     "d c m", "d-c-m", "d1t", "l0n", "c4c", "vcl", "vkl"... Chỉ chứa
+     cụm ĐỦ DÀI/đặc trưng (≥4 ký tự hoặc ghép nhiều âm tiết) nên an
+     toàn để khớp kiểu chuỗi con, không cần đứng riêng một từ.
+   - Tầng 2 — WORD_BOUNDARY_ONLY: so khớp trên chuỗi GIỮ NGUYÊN DẤU
+     THANH (normalizeKeepDiacritics) và chỉ khớp khi từ đó đứng
+     RIÊNG một mình (có ranh giới khoảng trắng 2 đầu). Dùng cho các
+     từ ngắn có gốc tiếng Việt — vì nếu bỏ dấu, các từ này trùng
+     dạng với từ vô hại phổ biến (VD "cặc" bỏ dấu = "cac" = dạng
+     không dấu của "các" → nếu so khớp không dấu sẽ chặn nhầm cụm
+     như "Đảng bộ CÁC cơ quan Đảng"). Do giữ dấu, các từ trong
+     WORD_BOUNDARY_ONLY CHỈ khớp khi gõ ĐÚNG CHÍNH TẢ TỤC (có dấu);
+     gõ không dấu (né tránh) sẽ KHÔNG bị chặn ở tầng này — đánh đổi
+     có chủ đích để ưu tiên không chặn nhầm từ/tên thật.
 
    LƯU Ý KHI CHỈNH SỬA:
-   - Thêm từ mới: viết KHÔNG DẤU, chữ thường, KHÔNG khoảng trắng
-     vào BLOCK_LIST, ví dụ "loz" chứ không phải "lòz".
-   - Từ càng ngắn (2-3 ký tự) càng dễ khớp nhầm vào tên thật
-     (VD: "ngu" có thể khớp vào giữa họ tên nào đó ghép lại sau khi
-     chuẩn hoá) — đã hạn chế bằng WORD_BOUNDARY_ONLY bên dưới cho
-     một số từ ngắn dễ nhầm, chỉ khớp khi đứng riêng một từ.
+   - Thêm từ vào BLOCK_LIST: viết KHÔNG DẤU, chữ thường, KHÔNG
+     khoảng trắng, ví dụ "loz" chứ không phải "lòz".
+   - Thêm từ vào WORD_BOUNDARY_ONLY: viết CÓ DẤU đầy đủ, đúng chính
+     tả từ tục thật (ví dụ "cặc", "địt"), TRỪ các viết tắt/tiếng Anh
+     vốn không dấu (dm, vl, wtf...) thì giữ nguyên không dấu.
+   - Từ càng ngắn càng dễ khớp nhầm vào tên thật hoặc từ thông dụng
+     — cân nhắc kỹ trước khi thêm vào BLOCK_LIST (khớp chuỗi con);
+     nếu là từ có gốc tiếng Việt, gần như luôn nên đưa vào
+     WORD_BOUNDARY_ONLY (có dấu, đứng riêng) thay vì BLOCK_LIST.
    ============================================================ */
 (function (global) {
     'use strict';
@@ -60,17 +69,34 @@
     }
 
     /**
-     * Chuẩn hoá nhưng GIỮ ranh giới từ (thay ký tự chèn bằng 1
-     * khoảng trắng duy nhất) — dùng cho các từ ngắn dễ khớp nhầm,
-     * chỉ chặn khi từ đó đứng riêng, không phải một phần của từ
-     * khác ghép lại do việc nối liền chuỗi.
+     * Chuẩn hoá GIỮ NGUYÊN DẤU TIẾNG VIỆT (không bỏ dấu thanh, không
+     * bỏ dấu phụ trên nguyên âm) — dùng cho các từ ngắn dễ khớp nhầm
+     * (WORD_BOUNDARY_ONLY), để phân biệt được các cặp từ chỉ khác
+     * nhau ở dấu, ví dụ "các" (dấu sắc, vô hại) ≠ "cặc" (dấu nặng,
+     * tục). Nếu tước hết dấu, hai từ này quy về cùng chuỗi "cac" và
+     * bị lẫn — đây là nguyên nhân "Đảng bộ các cơ quan Đảng" từng bị
+     * chặn nhầm (chữ "các" trong câu trùng dạng không dấu với "cặc").
+     *
+     * Ký tự chèn (., -, _, ...) vẫn được nối liền lại (không tách
+     * thành từ riêng) để vẫn bắt được kiểu né "đ.ị.t", "đ-ị-t"; chỉ
+     * KHOẢNG TRẮNG THẬT mới được coi là ranh giới giữa 2 từ.
+     *
+     * HỆ QUẢ CHỦ ĐÍCH: ai gõ các từ này KHÔNG DẤU (VD gõ "cac" thay
+     * vì "cặc") sẽ KHÔNG bị chặn bởi danh sách này — đổi lại để tuyệt
+     * đối không chặn nhầm các từ có dấu vô hại như "các". Các biến
+     * thể không dấu rõ ràng là tục/không thể là từ thật vẫn được bắt
+     * qua BLOCK_LIST (cụm dài, không dấu) ở trên.
      */
-    function normalizeKeepWords(text) {
+    function normalizeKeepDiacritics(text) {
         if (!text) return '';
-        let s = String(text).toLowerCase();
-        s = stripVietnameseTones(s);
+        let s = String(text).toLowerCase().normalize('NFC');
         s = s.split('').map(ch => LEET_MAP[ch] || ch).join('');
-        s = s.replace(/[^a-z0-9]+/g, ' ').trim();
+        // Bỏ dấu câu/ký hiệu chèn giữa nhưng KHÔNG thay bằng khoảng
+        // trắng — nối liền lại để bắt "đ.ị.t" -> "địt".
+        s = s.replace(/[.\-_'"()]/g, '');
+        // Khoảng trắng thật (space thường gõ khi tách từ) thì giữ
+        // nguyên làm ranh giới, chỉ gộp nhiều khoảng trắng liên tiếp.
+        s = s.replace(/\s+/g, ' ').trim();
         return s;
     }
 
@@ -83,12 +109,13 @@
     // NGẮN càng dễ vô tình khớp vào GIỮA một họ tên tiếng Việt thật
     // (ví dụ "cu" nằm trong "Cường", "du" nằm trong "Dung"/"Đức").
     // Vì vậy:
-    //   - BLOCK_LIST (khớp chuỗi con, không cần ranh giới từ) CHỈ
-    //     chứa cụm đủ dài (≥4 ký tự) hoặc cụm ghép nhiều âm tiết,
-    //     gần như không thể là 1 phần của tên người thật.
-    //   - Các từ ngắn/phổ biến (ngu, cho, du, cu, dm...) chỉ được
-    //     đưa vào WORD_BOUNDARY_ONLY — chặn khi chúng đứng RIÊNG
-    //     một từ, không chặn khi bị dính liền vào từ khác.
+    //   - BLOCK_LIST (khớp chuỗi con, không cần ranh giới từ, KHÔNG
+    //     dấu) CHỈ chứa cụm đủ dài (≥4 ký tự) hoặc cụm ghép nhiều âm
+    //     tiết, gần như không thể là 1 phần của tên người thật.
+    //   - Các từ ngắn/phổ biến (ngu, chó, địt, cặc...) chỉ được đưa
+    //     vào WORD_BOUNDARY_ONLY — chặn khi đứng RIÊNG một từ VÀ giữ
+    //     ĐÚNG DẤU tiếng Việt (xem normalizeKeepDiacritics phía
+    //     trên) để không lẫn với từ vô hại cùng dạng không dấu.
     // ============================================================
 
     // 🔴 Tục tĩu / bộ phận cơ thể mang tính tục — cụm đủ dài, an toàn
@@ -126,20 +153,25 @@
         ...EXPLICIT, ...INSULT_HEAVY, ...SLUR_THREAT, ...ENGLISH
     ].filter(Boolean);
 
-    // Từ ngắn / thông dụng — dễ vô tình khớp giữa tên ghép lại nếu
-    // dùng kiểu chuỗi con, nên chỉ chặn khi đứng RIÊNG một từ (có
-    // khoảng trắng/dấu câu ở 2 đầu sau khi chuẩn hoá giữ ranh giới).
+    // Từ ngắn / thông dụng — dễ vô tình khớp giữa tên ghép lại HOẶC
+    // trùng dạng không dấu với từ tiếng Việt vô hại (VD "các" ≠
+    // "cặc"), nên chỉ chặn khi đứng RIÊNG một từ VÀ giữ đúng dấu
+    // tiếng Việt như viết tục thật (xem normalizeKeepDiacritics).
     //
-    // GHI CHÚ: cố ý KHÔNG đưa 'cu', 'du', 'dien' vào đây dù là từ
+    // QUY TẮC: viết CÓ DẤU đầy đủ (đúng chính tả từ tục) cho các từ
+    // có gốc tiếng Việt — vì sẽ so khớp bằng chuỗi GIỮ DẤU, không
+    // phải chuỗi đã tước dấu như BLOCK_LIST. Các viết tắt/tiếng Anh
+    // vốn không có dấu (dm, vl, wtf...) giữ nguyên không dấu.
+    //
+    // GHI CHÚ: cố ý KHÔNG đưa 'cu', 'du', 'diên' vào đây dù là từ
     // tục phổ biến — vì đây cũng là các âm tiết có thật trong tên/họ
     // người Việt (Cù, Cự, Du, Diễn, Điền...), nên dù chặn kiểu đứng
     // riêng vẫn chặn nhầm tên thật. Các từ này thường đi kèm từ khác
-    // khi bị lạm dụng (VD "con cu", "thang dien") — đã có các cụm dài
+    // khi bị lạm dụng (VD "con cu", "thằng điên") — đã có các cụm dài
     // hơn trong EXPLICIT/INSULT_HEAVY phía trên để bắt trường hợp đó.
     const WORD_BOUNDARY_ONLY = [
-        'dit', 'deo', 'cac', 'lon', 'cak', 'dm', 'vl',
-        'ngu', 'cho', 'khung', 'canhau', 'suckhoe',
-        'fck', 'fk', 'dick', 'stfu', 'wtf', 'sex', 'giet'
+        'địt', 'đéo', 'cặc', 'lồn', 'ngu', 'chó', 'giết',
+        'dm', 'vl', 'cak', 'fck', 'fk', 'dick', 'stfu', 'wtf', 'sex'
     ];
 
     /**
@@ -157,7 +189,7 @@
             }
         }
 
-        const spaced = ' ' + normalizeKeepWords(text) + ' ';
+        const spaced = ' ' + normalizeKeepDiacritics(text) + ' ';
         for (const word of WORD_BOUNDARY_ONLY) {
             if (word && spaced.includes(' ' + word + ' ')) {
                 return { blocked: true, matched: word };
@@ -178,6 +210,6 @@
         return text;
     }
 
-    global.ProfanityFilter = { check, maskIfBlocked, normalize };
+    global.ProfanityFilter = { check, maskIfBlocked, normalize, normalizeKeepDiacritics };
 
 })(typeof window !== 'undefined' ? window : this);
