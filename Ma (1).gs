@@ -87,6 +87,8 @@ function doPost(e) {
       return handleSubmitRollCall(payload);
     } else if (payload.action === 'uploadAvatar') {
       return handleUploadAvatar(payload);
+    } else if (payload.action === 'zaloExchangeToken') {
+      return handleZaloExchangeToken(payload);
     }
 
     return sendResponse(false, 'Action không hợp lệ');
@@ -211,6 +213,96 @@ function handleUploadAvatar(payload) {
     return sendResponse(false, 'Lỗi khi lưu avatar: ' + error);
   } finally {
     lock.releaseLock();
+  }
+}
+
+// ============================================================
+// ZALO LOGIN (OAuth v4) — đổi "code" (nhận từ trình duyệt sau khi người
+// dùng đăng nhập Zalo) lấy access_token, rồi lấy tên + avatar thật.
+// App Secret KHÔNG được để lộ ở phía trình duyệt (index.html) — vì vậy
+// toàn bộ bước đổi code phải làm ở đây (Apps Script), nơi Secret được
+// cất trong Script Properties, không nằm trong code nhìn thấy được.
+//
+// CÁCH THIẾT LẬP (làm 1 LẦN, thủ công trong Apps Script):
+// 1. Trong editor Apps Script: Project Settings (biểu tượng bánh răng bên
+//    trái) → "Script Properties" → "Add script property".
+// 2. Thêm 2 dòng:
+//      ZALO_APP_ID     = 433996254902748845
+//      ZALO_APP_SECRET = (dán Khóa bí mật ứng dụng Zalo vào đây)
+//    KHÔNG hard-code App Secret trực tiếp trong file .gs này.
+// ============================================================
+function getZaloAppId() {
+  return PropertiesService.getScriptProperties().getProperty('ZALO_APP_ID');
+}
+function getZaloAppSecret() {
+  return PropertiesService.getScriptProperties().getProperty('ZALO_APP_SECRET');
+}
+
+function handleZaloExchangeToken(payload) {
+  try {
+    const code = (payload.code || '').toString().trim();
+    const codeVerifier = (payload.codeVerifier || '').toString().trim();
+    const redirectUri = (payload.redirectUri || '').toString().trim();
+
+    if (!code) {
+      return sendResponse(false, 'Thiếu mã code từ Zalo.');
+    }
+    if (!redirectUri) {
+      return sendResponse(false, 'Thiếu redirectUri.');
+    }
+
+    const appId = getZaloAppId();
+    const appSecret = getZaloAppSecret();
+    if (!appId || !appSecret) {
+      Logger.log('handleZaloExchangeToken: thiếu ZALO_APP_ID/ZALO_APP_SECRET trong Script Properties');
+      return sendResponse(false, 'Server chưa cấu hình Zalo App ID/Secret (Script Properties).');
+    }
+
+    // Bước 1: đổi code lấy access_token
+    const tokenResp = UrlFetchApp.fetch('https://oauth.zaloapp.com/v4/access_token', {
+      method: 'post',
+      headers: { 'secret_key': appSecret },
+      payload: {
+        app_id: appId,
+        grant_type: 'authorization_code',
+        code: code,
+        code_verifier: codeVerifier
+      },
+      muteHttpExceptions: true
+    });
+
+    const tokenData = JSON.parse(tokenResp.getContentText());
+    if (!tokenData.access_token) {
+      Logger.log('handleZaloExchangeToken: lỗi lấy access_token - ' + tokenResp.getContentText());
+      return sendResponse(false, 'Không lấy được access_token từ Zalo: ' +
+        (tokenData.error_description || tokenData.error || 'lỗi không rõ'));
+    }
+
+    // Bước 2: dùng access_token lấy thông tin người dùng (id, tên, avatar)
+    const profileUrl = 'https://graph.zalo.me/v2.0/me?fields=' +
+      encodeURIComponent('id,name,picture');
+    const profileResp = UrlFetchApp.fetch(profileUrl, {
+      method: 'get',
+      headers: { 'access_token': tokenData.access_token },
+      muteHttpExceptions: true
+    });
+
+    const profileData = JSON.parse(profileResp.getContentText());
+    if (!profileData.id) {
+      Logger.log('handleZaloExchangeToken: lỗi lấy profile - ' + profileResp.getContentText());
+      return sendResponse(false, 'Không lấy được thông tin người dùng từ Zalo.');
+    }
+
+    const avatarUrl = (profileData.picture && profileData.picture.data && profileData.picture.data.url) || '';
+
+    return sendResponse(true, 'Đăng nhập Zalo thành công', {
+      zaloId: profileData.id,
+      zaloName: profileData.name || '',
+      zaloAvatarUrl: avatarUrl
+    });
+  } catch (error) {
+    Logger.log('handleZaloExchangeToken error: ' + error);
+    return sendResponse(false, 'Lỗi khi xác thực Zalo: ' + error);
   }
 }
 
@@ -1283,4 +1375,11 @@ function testWebApp() {
 
   const result = doPost(mockEvent);
   Logger.log(result.getContent());
+}
+function TEST_xinQuyenUrlFetch() {
+  const res = UrlFetchApp.fetch('https://oauth.zaloapp.com/v4/access_token', {
+    method: 'post',
+    muteHttpExceptions: true
+  });
+  Logger.log('OK, status: ' + res.getResponseCode());
 }
