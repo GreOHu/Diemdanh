@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Xác nhận điểm danh lần 2</title>
+<!--
+  ============================================================
+  TRANG XÁC NHẬN ĐIỂM DANH LẦN 2 (FLASH ROLL-CALL)
+  ============================================================
+  Trang RIÊNG, cực đơn giản — chỉ 1 nút "Xác nhận có mặt". Khác với
+  checkin.html (index.html chế độ checkin) vốn cần nhập Họ Tên/Chức Vụ/Đơn Vị
+  cho lần điểm danh ĐẦU, ở đây đại biểu KHÔNG cần nhập lại gì cả: hệ thống
+  nhận diện qua deviceToken đã lưu sẵn trong localStorage từ lần điểm danh 1
+  (cùng key 'deviceToken' như checkin.html dùng) để tự biết là ai.
+
+  URL do display.html tạo ra có dạng:
+    checkin-rollcall.html?id=<meetingID>&t=<token>
+
+  CHỈNH URL NÀY nếu bạn deploy Apps Script khác — PHẢI khớp với URL đang
+  dùng trong index.html/display.html.
+  ============================================================
+-->
+<style>
+    :root {
+        --brand: #C8102E;
+        --ink: #1A1A1A;
+        --ink-soft: #4A4A4A;
+        --muted: #8A8A8A;
+        --line: rgba(0,0,0,0.12);
+        --surface: #FFFFFF;
+        --bg: #F4F1EC;
+        --success: #1E8E3E;
+        --error: #C8102E;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        padding: 20px;
+    }
+    .card {
+        width: 100%;
+        max-width: 420px;
+        background: var(--surface);
+        border-radius: 18px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        padding: 32px 24px;
+        text-align: center;
+    }
+    .icon { font-size: 48px; margin-bottom: 8px; }
+    h1 { font-size: 20px; color: var(--ink); margin: 0 0 6px; }
+    .sub { font-size: 14px; color: var(--ink-soft); margin-bottom: 24px; line-height: 1.5; }
+    .name-display {
+        font-size: 17px;
+        font-weight: 700;
+        color: var(--brand);
+        margin-bottom: 22px;
+        padding: 10px 14px;
+        background: rgba(200,16,46,0.06);
+        border-radius: 10px;
+    }
+    button {
+        width: 100%;
+        padding: 16px;
+        font-size: 17px;
+        font-weight: 800;
+        color: #fff;
+        background: var(--brand);
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: default; }
+    button:active { transform: scale(0.98); }
+    .message {
+        margin-top: 18px;
+        font-size: 14px;
+        font-weight: 600;
+        display: none;
+        padding: 12px;
+        border-radius: 10px;
+    }
+    .message.show { display: block; }
+    .message.success { color: var(--success); background: rgba(30,142,62,0.08); }
+    .message.error { color: var(--error); background: rgba(200,16,46,0.08); }
+    .countdown {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 14px;
+    }
+    .confirmed-icon { font-size: 56px; color: var(--success); }
+</style>
+</head>
+<body>
+
+<div class="card" id="card">
+    <div class="icon">⚡</div>
+    <h1>Xác nhận điểm danh lần 2</h1>
+    <div class="sub">Đề nghị quý đại biểu bấm xác nhận để ghi nhận vẫn còn tham dự.</div>
+
+    <div class="name-display" id="nameDisplay" style="display:none;"></div>
+
+    <button id="confirmBtn" onclick="submitConfirm()">✓ Xác nhận có mặt</button>
+
+    <div class="countdown" id="countdownEl"></div>
+    <div class="message error" id="errorMsg"></div>
+    <div class="message success" id="successMsg"></div>
+</div>
+
+<script>
+    // CHỈNH URL NÀY nếu bạn deploy Apps Script khác với URL trong index.html/display.html.
+    const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzoJirrnHSazvKRTeiUTdVD12bAgk7Q-2-m15-fj3y06Mal6MugM_LkAc4P81A3pvk3/exec';
+
+    const params = new URLSearchParams(window.location.search);
+    const meetingID = params.get('id') || params.get('meetingID') || '';
+    const token = params.get('t') || params.get('token') || '';
+
+    function getDeviceToken() {
+        // Dùng ĐÚNG key 'deviceToken' như checkin.html (index.html chế độ
+        // checkin) — nhờ vậy nhận diện được đại biểu qua thiết bị mà không
+        // cần họ nhập lại tên.
+        let t = localStorage.getItem('deviceToken');
+        return t || '';
+    }
+
+    let jsonpCounter = 0;
+    function callGASJsonp(payload, timeoutMs = 10000) {
+        return new Promise((resolve, reject) => {
+            jsonpCounter++;
+            const callbackName = 'gasJsonpCb_' + Date.now() + '_' + jsonpCounter;
+            const script = document.createElement('script');
+            let settled = false;
+
+            const cleanup = () => {
+                delete window[callbackName];
+                if (script.parentNode) script.parentNode.removeChild(script);
+            };
+
+            window[callbackName] = (data) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(data);
+            };
+
+            const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(new Error('Hết thời gian chờ phản hồi từ server'));
+            }, timeoutMs);
+
+            const origResolve = window[callbackName];
+            window[callbackName] = (data) => { clearTimeout(timer); origResolve(data); };
+
+            const qs = new URLSearchParams({ ...payload, callback: callbackName }).toString();
+            script.src = GOOGLE_APPS_SCRIPT_URL + '?' + qs;
+            script.onerror = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                cleanup();
+                reject(new Error('Lỗi kết nối mạng'));
+            };
+            document.body.appendChild(script);
+        });
+    }
+
+    function callGASPost(payload) {
+        return fetch(GOOGLE_APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        }).then(res => res.text()).then(text => {
+            try { return JSON.parse(text); }
+            catch (e) { throw new Error('Server trả về dữ liệu không hợp lệ'); }
+        });
+    }
+
+    function showError(msg) {
+        const el = document.getElementById('errorMsg');
+        el.textContent = '❌ ' + msg;
+        el.classList.add('show');
+        document.getElementById('successMsg').classList.remove('show');
+    }
+
+    function showSuccess(msg) {
+        const el = document.getElementById('successMsg');
+        el.textContent = msg;
+        el.classList.add('show');
+        document.getElementById('errorMsg').classList.remove('show');
+    }
+
+    function disableForExpired() {
+        document.getElementById('confirmBtn').disabled = true;
+        document.getElementById('confirmBtn').textContent = 'Đã hết hiệu lực';
+    }
+
+    // BẮT BUỘC lấy GPS trước khi xác nhận — ngăn trường hợp người đã rời hội
+    // trường được người khác chụp/gửi lại mã QR rồi tự quét từ xa (VD từ nhà)
+    // để xác nhận "có mặt" giả. Đây chỉ là lớp kiểm tra PHÍA CLIENT để báo lỗi
+    // nhanh/thân thiện — lớp chặn THẬT SỰ nằm ở server (handleSubmitRollCall
+    // trong Ma.gs luôn tự tính lại khoảng cách, không tin dữ liệu từ client).
+    function getCurrentPositionPromise() {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                reject(new Error('NO_GEOLOCATION'));
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (position) => resolve(position.coords),
+                (error) => reject(error),
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+        });
+    }
+
+    function submitConfirm() {
+        if (!meetingID || !token) {
+            showError('Đường dẫn không hợp lệ. Vui lòng quét lại mã QR trên màn hình.');
+            return;
+        }
+        const deviceToken = getDeviceToken();
+        if (!deviceToken) {
+            showError('Không tìm thấy thông tin điểm danh lần 1 trên thiết bị này. Vui lòng liên hệ Ban Tổ chức.');
+            return;
+        }
+
+        const btn = document.getElementById('confirmBtn');
+        btn.disabled = true;
+        btn.textContent = '📍 Đang xác định vị trí...';
+
+        getCurrentPositionPromise()
+        .then(coords => {
+            btn.textContent = '⏳ Đang xác nhận...';
+            return callGASPost({
+                action: 'submitRollCall',
+                meetingID: meetingID,
+                token: token,
+                deviceToken: deviceToken,
+                latitude: coords.latitude,
+                longitude: coords.longitude
+            });
+        })
+        .then(data => {
+            if (data.success) {
+                document.getElementById('nameDisplay').textContent = data.fullName || '';
+                document.getElementById('nameDisplay').style.display = 'block';
+                document.querySelector('.icon').textContent = '✅';
+                btn.style.display = 'none';
+                showSuccess(data.alreadyConfirmed
+                    ? '✓ Bạn đã xác nhận có mặt cho lượt này rồi.'
+                    : '✓ Xác nhận có mặt thành công. Cảm ơn quý đại biểu!');
+            } else {
+                btn.disabled = false;
+                btn.textContent = '✓ Xác nhận có mặt';
+                showError(data.message || 'Không xác nhận được, vui lòng thử lại.');
+                if ((data.message || '').indexOf('hết hiệu lực') !== -1) disableForExpired();
+            }
+        })
+        .catch(error => {
+            btn.disabled = false;
+            btn.textContent = '✓ Xác nhận có mặt';
+            // Lỗi từ getCurrentPositionPromise (GeolocationPositionError) có
+            // .code, lỗi mạng/fetch thì có .message — phân biệt để báo đúng.
+            // Vì đã điểm danh lần 1 trên cùng thiết bị/trình duyệt, quyền vị
+            // trí thường đã được cấp từ trước và không hỏi lại — các thông
+            // báo dưới đây chỉ xuất hiện trong trường hợp hiếm (đổi thiết bị,
+            // xoá dữ liệu trình duyệt...), nên diễn đạt ngắn gọn, đúng mực.
+            if (error && error.code === 1) {
+                showError('Chưa có quyền truy cập vị trí trên thiết bị này. Vui lòng cấp quyền vị trí cho trang rồi xác nhận lại.');
+            } else if (error && error.code === 2) {
+                showError('Không xác định được vị trí. Vui lòng bật định vị trên điện thoại rồi thử lại.');
+            } else if (error && error.code === 3) {
+                showError('Xác định vị trí quá thời gian chờ. Vui lòng thử lại.');
+            } else if (error && error.message === 'NO_GEOLOCATION') {
+                showError('Thiết bị này không hỗ trợ định vị. Vui lòng liên hệ Ban Tổ chức.');
+            } else {
+                showError('Lỗi kết nối. Vui lòng thử lại.');
+            }
+        });
+    }
+
+    // Kiểm tra trạng thái ngay khi mở trang — nếu mã đã hết hiệu lực từ trước
+    // (VD đại biểu quét chậm, banner đã đổi lại), báo ngay thay vì để họ bấm
+    // xác nhận rồi mới biết là thất bại.
+    function checkStatusOnLoad() {
+        if (!meetingID || !token) {
+            showError('Đường dẫn không hợp lệ. Vui lòng quét lại mã QR trên màn hình.');
+            document.getElementById('confirmBtn').style.display = 'none';
+            return;
+        }
+        callGASJsonp({ action: 'getRollCallStatus', meetingID: meetingID })
+            .then(data => {
+                if (!data.success || !data.active || !data.rollCall || data.rollCall.token !== token) {
+                    showError('Mã đã hết hiệu lực, vui lòng liên hệ Ban Tổ chức.');
+                    disableForExpired();
+                }
+            })
+            .catch(() => { /* im lặng - vẫn cho phép bấm, server sẽ tự kiểm tra lại khi submit */ });
+    }
+
+    checkStatusOnLoad();
+</script>
+
+</body>
+</html>
